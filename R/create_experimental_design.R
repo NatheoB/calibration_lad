@@ -1,10 +1,16 @@
-create_experimental_design <- function(inv_names, lads, species) {
+create_experimental_design <- function(inv_names, n_replicate, lad_values) {
   
-  data.frame(
-    inv_id = paste0("inv_", rep(1:length(lads), each = length(species))),
+  expand.grid(
     inv_name = inv_names,
-    sp = rep(species, times = length(lads)),
-    lad = rep(lads, each = length(species))
-  )
+    replicate = 1:n_replicate,
+    lad = lad_values
+  ) %>% 
+    tidyr::unite(
+      col = id,
+      inv_name, replicate, lad,
+      sep = "_",
+      remove = FALSE
+    ) %>% 
+    dplyr::relocate(id)
   
 }

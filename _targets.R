@@ -11,52 +11,77 @@ lapply(grep("R$", list.files("R", recursive = TRUE), value = TRUE), function(x) 
 # Set options (i.e. clustermq.scheduler for multiprocess computing)
 options(tidyverse.quiet = TRUE, clustermq.scheduler = "multiprocess")
 
-tar_option_set(packages = c("dplyr", "tidyr", "data.table", "vroom",
+tar_option_set(packages = c("dplyr", "tidyr", "data.table", 
+                            "vroom", "purrr", 
+                            "ggplot2", "ggforce", "sf",
                             "SamsaRaLight"))
-
-# install.packages("https://sourceforge.net/projects/repiceasource/files/latest", repos = NULL,  type="source")
-# install.packages("https://sourceforge.net/projects/rcapsis.capsisbridge.p/files/latest", repos = NULL,  type="source")
-# devtools::install_github("ecoinfor/U.Taxonstand")
-# devtools::install_github("EnquistLab/RTNRS")
 
 # List of targets
 list(
   
-  # GLOBAL PARAMETERS ----
-  tar_target(SEED, 5000),
+  # PARAMETERS ----
+  
+  ## Global parameters ----
+  tar_target(SEED, 5030),
+  
+  ## SL parameters ----
+  tar_target(cell_size, 10),
+  
+  ## Experimental parameters ----
+  tar_target(n_replicates, 3),
+  tar_target(lad_values, seq(0.1, 2, by = 0.1)),
   
   
-  # Inputs ----
-  
-  ## Sensors dataset ----
-  tar_target(data_sensors, expand.grid(
-    x = seq(5, 95, by = 10),
-    y = seq(5, 95, by = 10)
-  ) %>%
-    dplyr::mutate(id = row_number(),
-                  h_m = 1.3)),
   
   
-  ## Radiation dataset ----
-  tar_target(data_rad, SamsaRaLight::data_rad_prenovel),
+  # PREPARE VIRTUAL PLOTS ----
+  
+  ## Load and clean the initial database ----
+  tar_target(init_db_fp, "data/dataBase.RData", format = "file"),
+  tar_target(init_db, load_database_from_rdata(init_db_fp)),
   
   
-  ## Inventories for SamsareaLight ----
-  tar_target(trees_list, list("prenovel" = SamsaRaLight::data_trees_prenovel)),
-  tar_target(lads, seq(0.1, 1.5, by = 0.1)),
-  tar_target(species, c("Abies alba", "Picea abies", "Fagus sylvatica")),
-  
-  tar_target(exp_design, 
-             create_experimental_design(names(trees_list)[1], lads, species)
-  ),
-  
-  tar_target(invs_for_samsalight, 
-             create_samsalight_inventories(trees_list, exp_design)),
+  ## Get some informations about the database ----
+  tar_target(inv_names, unique(init_db$plots$name)),
   
   
-  # Run SamsaraLight for each LAD ----
-  tar_target(out_samsalight_list, run_samsalight_expdesign(invs_for_samsalight,
-                                                           data_sensors, data_rad)),
+  ## Create virtual plots from tree inventories ----
+  tar_target(data_sl, create_samsaralight_stands(init_db, 
+                                                 cell_size, 
+                                                 n_replicates,
+                                                 "output/sites",
+                                                 SEED)),
+  
+  
+  ## Catch monthly radiation data from PVGIS ----
+  tar_target(data_rad, get_radiation_dataset(init_db$plots)),
+  
+  
+  
+  
+  
+  # ESTIMATE LIGHT ON VIRTUAL SENSORS ----
+  
+  ## Create the experimental design ----
+  tar_target(exp_design, create_experimental_design(inv_names, 
+                                                    n_replicates, 
+                                                    lad_values)),
+  
+  ## Run SamsaraLight ----
+  ## On all sites, replicated as a plot, and setting a given mean LAD value
+  tar_target(out_sl, run_samsalight_expdesign(data_sl,
+                                              data_rad,
+                                              exp_design)),
+  
+  
+  
+  
+  
+  # CALIBRATE LAD ----
+  
+  ## Compute residuals ----
+  tar_target(out_residuals, compute_residuals(init_db$sensors, 
+                                              out_sl)),
   
   
   NULL
