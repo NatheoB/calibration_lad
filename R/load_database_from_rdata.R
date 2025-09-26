@@ -40,6 +40,10 @@ load_database_from_rdata <- function(rdata_fp) {
   db_list$species$VentouxC7$SpCode_SamsaraLL <- as.numeric(db_list$species$VentouxC7$SpCode_SamsaraLL)
   
   
+  # Set Quercus petraea as Quercus sp. in Baileux Oak
+  db_list$species$BaileuxOak[which(db_list$species$BaileuxOak$SpCode_SamsaraLL == 1), c("Essence", "Essence_Latin")] <- c("Chêne indigène", "Quercus_sp")
+  
+  
   # Return final database
   return(db_list)
 }

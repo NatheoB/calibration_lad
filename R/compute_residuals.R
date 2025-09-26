@@ -14,18 +14,23 @@ compute_residuals <- function(data_sensors, out_sl) {
       dplyr::select(id_sensor = id, pacl_field = PACLtotal)
     
     # Compute mean residuals between all sensors
-    tmp_res_pacl <- tmp_field_sensors %>% 
+    tmp_ind_pacl <- tmp_field_sensors %>% 
       dplyr::left_join(tmp_sl_sensors, by = "id_sensor") %>% 
-      dplyr::mutate(res_pacl = pacl_sl - pacl_field) %>% 
-      dplyr::summarise(res_pacl = mean(res_pacl)) %>% 
-      dplyr::pull(res_pacl)
+      dplyr::mutate(res_pacl = pacl_field - pacl_sl,
+                    abs_error_pacl = abs(pacl_field - pacl_sl),
+                    sqr_error_pacl = (pacl_field - pacl_sl)^2) %>% 
+      dplyr::summarise(res_pacl = mean(res_pacl),
+                       mae_pacl = mean(abs_error_pacl),
+                       rmse_pacl = sqrt(mean(sqr_error_pacl)))
          
     # Output the mean residual
     out_residuals[[i]] <- data.frame(
       site = out_sl[[i]]$site,
       replicate = out_sl[[i]]$replicate,
       lad = out_sl[[i]]$lad,
-      res_pacl = tmp_res_pacl
+      res_pacl = tmp_ind_pacl$res_pacl,
+      mae_pacl = tmp_ind_pacl$mae_pacl,
+      rmse_pacl = tmp_ind_pacl$rmse_pacl
     )
   }
   

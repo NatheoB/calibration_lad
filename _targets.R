@@ -28,8 +28,8 @@ list(
   tar_target(cell_size, 10),
   
   ## Experimental parameters ----
-  tar_target(n_replicates, 3),
-  tar_target(lad_values, seq(0.1, 2, by = 0.1)),
+  tar_target(n_replicates, 1),
+  tar_target(lad_values, seq(0.01, 2, by = 0.01)),
   
   
   
@@ -69,19 +69,19 @@ list(
   
   ## Run SamsaraLight ----
   ## On all sites, replicated as a plot, and setting a given mean LAD value
-  tar_target(out_sl, run_samsalight_expdesign(data_sl,
-                                              data_rad,
-                                              exp_design)),
-  
-  
-  
-  
-  
-  # CALIBRATE LAD ----
-  
-  ## Compute residuals ----
-  tar_target(out_residuals, compute_residuals(init_db$sensors, 
-                                              out_sl)),
+  # tar_target(out_sl, run_samsalight_expdesign(data_sl,
+  #                                             data_rad,
+  #                                             exp_design)),
+  # 
+  # 
+  # 
+  # 
+  # 
+  # # CALIBRATE LAD ----
+  # 
+  # ## Compute residuals ----
+  # tar_target(out_residuals, compute_residuals(init_db$sensors,
+  #                                             out_sl)),
   
   
   NULL

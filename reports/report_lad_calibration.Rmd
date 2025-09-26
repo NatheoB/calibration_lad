@@ -23,10 +23,52 @@ library(ggplot2)
 
 ```{r}
 tar_load(out_residuals)
+```
 
+```{r}
 out_residuals %>% 
-  ggplot(aes(y = res_pacl, x = lad, color = replicate)) +
+  dplyr::filter(grepl("IRRES", site)) %>% 
+  ggplot(aes(y = res_pacl, x = lad, color = as.factor(replicate))) +
   facet_wrap(~site) +
-  geom_point()
+  geom_point() +
+  geom_hline(yintercept = 0, color = "salmon")
+```
+
+```{r}
+out_residuals %>% 
+  dplyr::filter(grepl("IRRES", site)) %>% 
+  ggplot(aes(y = mae_pacl, x = lad, color = as.factor(replicate))) +
+  facet_wrap(~site) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "salmon")
+```
+
+```{r}
+out_residuals %>% 
+  dplyr::filter(grepl("IRRES", site)) %>% 
+  ggplot(aes(y = rmse_pacl, x = lad, color = as.factor(replicate))) +
+  facet_wrap(~site) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "salmon")
+```
+
+# Find the best lad value per site
+
+```{r}
+best_lad <- out_residuals %>% 
+  dplyr::group_by(site, replicate) %>%
+  dplyr::summarise(
+    lad_res = lad[which.min(abs(res_pacl))],
+    lad_mae = lad[which.min(abs(mae_pacl))],
+    lad_rmse = lad[which.min(abs(rmse_pacl))]
+  ) %>% 
+  dplyr::group_by(site) %>% 
+  dplyr::summarise(
+    lad_res = mean(lad_res),
+    lad_mae = mean(lad_mae),
+    lad_rmse = mean(lad_rmse)
+  )
+  
+print.data.frame(best_lad)
 ```
 
