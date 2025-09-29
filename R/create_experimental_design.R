@@ -1,13 +1,12 @@
-create_experimental_design <- function(inv_names, n_replicate, lad_values) {
+create_experimental_design <- function(site_names, n_replicate, lad_values) {
   
   expand.grid(
-    inv_name = inv_names,
-    replicate = 1:n_replicate,
-    lad = lad_values
+    site = site_names,
+    replicate = 1:n_replicate
   ) %>% 
     tidyr::unite(
       col = id,
-      inv_name, replicate, lad,
+      site, replicate,
       sep = "_",
       remove = FALSE
     ) %>% 

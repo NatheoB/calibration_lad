@@ -1,11 +1,13 @@
 create_samsaralight_stands <- function(init_db, 
-                                       cell_size, 
                                        n_replicates,
                                        output_plots_fp,
                                        seed) {
   
   # Set the seed for reproducibility
   set.seed(seed)
+  
+  # Set the cell size, which will not impact the study as we compute light only on sensors
+  cell_size <- 5
   
   # Output list
   out_stands <- setNames(
@@ -28,8 +30,12 @@ create_samsaralight_stands <- function(init_db,
       
       # Get trees inventory
       tmp_data_trees <- init_db$trees[[site]] %>% 
+        dplyr::left_join(init_db$species[[site]], 
+                         by = c("SpCode" = "SpCode_SamsaraLL")) %>% 
         dplyr::mutate(crown_type = "8E") %>% 
-        dplyr::select(id_tree = Id, species = SpCode,
+        dplyr::select(id_tree = Id, 
+                      species_code = SpCode,
+                      species_calib = sp_calib,
                       x = X, y = Y, dbh_cm = Dbh,
                       crown_type, h_m = H, hbase_m = CBH, hmax_m = CMRH,
                       rn_m = RN, rs_m = RS, re_m = RE, rw_m = RW,

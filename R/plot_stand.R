@@ -6,7 +6,7 @@ plot_stand <- function(data_stand, data_species,
   ## Add species information to the tree dataset
   data_trees <- data_stand$trees %>% 
     dplyr::left_join(data_species,
-                     by = c("species" = "SpCode_SamsaraLL")) %>% 
+                     by = c("species_code" = "SpCode_SamsaraLL")) %>% 
     dplyr::mutate(Essence_Latin = factor(Essence_Latin, levels = data_species$Essence_Latin))
   
   

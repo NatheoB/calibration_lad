@@ -14,7 +14,8 @@ options(tidyverse.quiet = TRUE, clustermq.scheduler = "multiprocess")
 tar_option_set(packages = c("dplyr", "tidyr", "data.table", 
                             "vroom", "purrr", 
                             "ggplot2", "ggforce", "sf",
-                            "SamsaRaLight"))
+                            "SamsaRaLight",
+                            "BayesianTools", "extraDistr"))
 
 # List of targets
 list(
@@ -25,12 +26,16 @@ list(
   tar_target(SEED, 5030),
   
   ## SL parameters ----
-  tar_target(cell_size, 10),
+
   
   ## Experimental parameters ----
   tar_target(n_replicates, 1),
-  tar_target(lad_values, seq(0.01, 2, by = 0.01)),
   
+  ## Calibration parameters ----
+  tar_target(n_chains, 3),
+  tar_target(n_iterations, 1000),
+  tar_target(n_burning, 0),
+
   
   
   
@@ -42,12 +47,14 @@ list(
   
   
   ## Get some informations about the database ----
-  tar_target(inv_names, unique(init_db$plots$name)),
+  tar_target(site_names, unique(init_db$plots$name)),
+  
+  tar_target(sp_calib_occ, get_occurences_species2calib(init_db)),
+  tar_target(species2calib, as.character(unique(sp_calib_occ$species))),
   
   
   ## Create virtual plots from tree inventories ----
   tar_target(data_sl, create_samsaralight_stands(init_db, 
-                                                 cell_size, 
                                                  n_replicates,
                                                  "output/sites",
                                                  SEED)),
@@ -60,28 +67,23 @@ list(
   
   
   
-  # ESTIMATE LIGHT ON VIRTUAL SENSORS ----
+  # CALIBRATE THE LAD ----
   
   ## Create the experimental design ----
-  tar_target(exp_design, create_experimental_design(inv_names, 
-                                                    n_replicates, 
-                                                    lad_values)),
+  tar_target(exp_design, create_experimental_design(site_names, 
+                                                    n_replicates)),
   
-  ## Run SamsaraLight ----
-  ## On all sites, replicated as a plot, and setting a given mean LAD value
-  # tar_target(out_sl, run_samsalight_expdesign(data_sl,
-  #                                             data_rad,
-  #                                             exp_design)),
-  # 
-  # 
-  # 
-  # 
-  # 
-  # # CALIBRATE LAD ----
-  # 
-  # ## Compute residuals ----
-  # tar_target(out_residuals, compute_residuals(init_db$sensors,
-  #                                             out_sl)),
+  ## Run the Bayesian calibration with model inversion ----
+  tar_target(out_calib, calibrate_lad(init_db,
+                                      data_sl,
+                                      data_rad,
+                                      exp_design,
+                                      species2calib,
+                                      site_names,
+                                      n_chains,
+                                      n_iterations,
+                                      n_burning,
+                                      output_folder = file.path(getwd(), "output/calib"))),
   
   
   NULL
