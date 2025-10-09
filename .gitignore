@@ -2,5 +2,7 @@
 .Rhistory
 .RData
 .Ruserdata
-output
-data
+output/
+data/
+dev/
+_targets/

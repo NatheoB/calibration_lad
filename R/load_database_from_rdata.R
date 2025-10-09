@@ -1,20 +1,13 @@
-load_database_from_rdata <- function(rdata_fp) {
+load_database_from_rdata <- function(init_db_fp,
+                                     plot_infos_fp) {
+  
+  # Get plot dataset
+  data_plots <- vroom(plot_infos_fp, show_col_types = FALSE)
   
   # Load data into a controlled R environment
   e <- new.env()
-  load(rdata_fp, envir = e)
+  load(init_db_fp, envir = e)
   
-  # Create plots dataset
-  data_plots <- e$SensorsDf %>% 
-    dplyr::select(name = plot, origin = origine) %>% 
-    dplyr::distinct() %>% 
-    dplyr::mutate(
-      longitude = 5.2,
-      latitude = 50.04
-    ) %>% 
-    as.data.frame()
-  
-
   # Get data and save lists into a list of datasets
   # For each list as a list of sites, rename each element by the site name
   db_list <- list(
@@ -29,6 +22,25 @@ load_database_from_rdata <- function(rdata_fp) {
   # Set plot extent without tops to NULL
   db_list$plot_extents <- db_list$plot_extents %>% 
     purrr::map_if(~nrow(.x) == 0, ~return(NULL))
+  
+  # Correct Baileux plot_extents
+  # Set to the HULL convex whereas we want the rect
+  # The bounding box in the inventories are FALSE
+  db_list$plot_extents[["BaileuxBeech"]] <- data.frame(
+    X = c(59.99, 66.1, -45.12, -51.23),
+    Y = c(64.18, -111.27, -115.15, 60.31)
+  )
+
+  db_list$plot_extents[["BaileuxMixed"]] <- data.frame(
+    X = c(-75.04, 84.85, 110.5, -49.39),
+    Y = c(44.77, 83.64, -21.84, -60.72)
+  )
+
+  db_list$plot_extents[["BaileuxOak"]] <- data.frame(
+    X = c(-43.82, 68.91, 55.25, -57.49),
+    Y = c(67.5, 53.47, -56.32, -42.3)
+  )
+  
   
   # Ventoux C7, pb with species codes
   # 210 is "Autres_Feuillus" for other plots

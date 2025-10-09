@@ -1,7 +1,6 @@
-create_samsaralight_stands <- function(init_db, 
-                                       n_replicates,
-                                       output_plots_fp,
-                                       seed) {
+create_calibration_stands <- function(init_db, 
+                                      output_plots_fp,
+                                      seed) {
   
   # Set the seed for reproducibility
   set.seed(seed)
@@ -18,14 +17,12 @@ create_samsaralight_stands <- function(init_db,
   
   # Initializes the progress bar
   i <- 0
-  i_max <- nrow(init_db$plots) * n_replicates
-  
-  pb <- txtProgressBar(min = 0, max = i_max, 
+  pb <- txtProgressBar(min = 0, max = nrow(init_db$plots), 
                        style = 3, width = 50, char = "=")   
   
   # For each site 
   for (site in names(out_stands)) {
-
+    
     out_stands[[site]] <- tryCatch({
       
       # Get trees inventory
@@ -50,6 +47,7 @@ create_samsaralight_stands <- function(init_db,
           dplyr::select(x = X, y = Y)
       }
       
+      use_rect_zone <- ifelse(is.null(tmp_plot_extent), TRUE, FALSE)
       
       
       ### ONLY FOR THE SAKE OF GRAPHICAL REPRESENTATION ####
@@ -58,7 +56,9 @@ create_samsaralight_stands <- function(init_db,
       tmp_stand_unfilled <- SamsaRaLight::create_rect_stand(tmp_data_trees, 
                                                             cell_size, 
                                                             tmp_plot_extent,
+                                                            use_rect_zone,
                                                             fill_around = FALSE)
+      
       
       # Add sensors and shift coordinates inside the rect stand
       tmp_stand_unfilled$sensors <- init_db$sensors[[site]] %>% 
@@ -70,55 +70,55 @@ create_samsaralight_stands <- function(init_db,
       
       # Plot the stand and save into the output folder as png image
       plot_stand(tmp_stand_unfilled, init_db$species[[site]], 
-                 file.path(output_plots_fp, "invs"), 
-                 paste0("inv_", site))
+                 output_plots_fp, 
+                 paste0(site, "_inv"))
       
       
       
       ### SAMSARALIGHT VIRTUAL PLOTS ###
       
       # Output list containing all replicates of a site
-      out_stands_site <- vector("list", length = n_replicates)
-        
-      for (r in 1:n_replicates) {
-        
-        # Create a square plot with the inventory in the center
-        # And fill with trees around the core polygon
-        tmp_stand_filled <- SamsaRaLight::create_rect_stand(tmp_data_trees, 
-                                                            cell_size, 
-                                                            tmp_plot_extent,
-                                                            fill_around = TRUE)
-        
-        # Add sensors and shift coordinates inside the rect stand
-        tmp_stand_filled$sensors <- init_db$sensors[[site]] %>% 
-          dplyr::select(id_sensor = id, x, y, h_m = z) %>% 
-          dplyr::mutate(
-            x = x + tmp_stand_filled$info$shift_x,
-            y = y + tmp_stand_filled$info$shift_y
-          )
-        
-        # Plot the stand and save into the output folder as png image
-        plot_stand(tmp_stand_filled, init_db$species[[site]], 
-                   file.path(output_plots_fp, "plots"), 
-                   paste("plot", site, r, sep = "_"))
-        
-        
-        # Add the virtual plot to the list
-        out_stands_site[[r]] <- tmp_stand_filled
-        
-        # Update the progress bar
-        i <- i+1
-        setTxtProgressBar(pb, i)
-      }
       
-      # Return the stand list of the site
-      out_stands_site
+      # Create a square plot with the inventory in the center
+      # And fill with trees around the core polygon
+      tmp_stand_filled <- SamsaRaLight::create_rect_stand(tmp_data_trees, 
+                                                          cell_size, 
+                                                          tmp_plot_extent,
+                                                          use_rect_zone,
+                                                          fill_around = TRUE)
+      
+      # Add sensors and shift coordinates inside the rect stand
+      tmp_stand_filled$sensors <- init_db$sensors[[site]] %>% 
+        dplyr::select(id_sensor = id, x, y, h_m = z) %>% 
+        dplyr::mutate(
+          x = x + tmp_stand_filled$info$shift_x,
+          y = y + tmp_stand_filled$info$shift_y
+        )
+      
+      # Plot the stand and save into the output folder as png image
+      plot_stand(tmp_stand_filled, init_db$species[[site]], 
+                 output_plots_fp, 
+                 paste0(site, "_virtualstand"))
+      
+      
+      # Compute competition variables
+      tmp_stand_filled$trees <- compute_competition_trees(tmp_stand_filled$trees,
+                                                          tmp_stand_filled$info$new_area_ha)
+      
+      
+      
+      # Add the virtual plot to the list
+      tmp_stand_filled
       
     }, error = function(e) {
       # If ther is an error, stop the pipeline
       message(paste("ERROR in site", site))
       stop(e)
     })
+    
+    # Update the progress bar
+    i <- i+1
+    setTxtProgressBar(pb, i)
     
   }
   close(pb)

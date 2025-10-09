@@ -15,7 +15,8 @@ tar_option_set(packages = c("dplyr", "tidyr", "data.table",
                             "vroom", "purrr", 
                             "ggplot2", "ggforce", "sf",
                             "SamsaRaLight",
-                            "BayesianTools", "extraDistr"))
+                            "BayesianTools", "extraDistr", "loo",
+                            "rlang"))
 
 # List of targets
 list(
@@ -29,62 +30,64 @@ list(
 
   
   ## Experimental parameters ----
-  tar_target(n_replicates, 1),
+
   
   ## Calibration parameters ----
   tar_target(n_chains, 3),
-  tar_target(n_iterations, 1000),
+  tar_target(n_iterations, 50000),
   tar_target(n_burning, 0),
 
   
   
   
-  # PREPARE VIRTUAL PLOTS ----
+  # PREPARE THE CALIBRATION DATASET ----
   
   ## Load and clean the initial database ----
   tar_target(init_db_fp, "data/dataBase.RData", format = "file"),
-  tar_target(init_db, load_database_from_rdata(init_db_fp)),
+  tar_target(plot_infos_fp, "data/plot_infos.csv", format = "file"),
+  
+  tar_target(init_db, load_database_from_rdata(init_db_fp,
+                                               plot_infos_fp)),
   
   
-  ## Get some informations about the database ----
-  tar_target(site_names, unique(init_db$plots$name)),
-  
+  ## Set the species to calibrate ----
   tar_target(sp_calib_occ, get_occurences_species2calib(init_db)),
   tar_target(species2calib, as.character(unique(sp_calib_occ$species))),
   
   
-  ## Create virtual plots from tree inventories ----
-  tar_target(data_sl, create_samsaralight_stands(init_db, 
-                                                 n_replicates,
-                                                 "output/sites",
-                                                 SEED)),
-  
+  ## Create calibration plots from tree inventories ----
+  tar_target(data_calib, create_calibration_stands(init_db,
+                                                   "output/initial_sites",
+                                                   SEED)),
   
   ## Catch monthly radiation data from PVGIS ----
   tar_target(data_rad, get_radiation_dataset(init_db$plots)),
   
   
-  
-  
-  
+
   # CALIBRATE THE LAD ----
+
+  ## Initialise the Bayesian setups ----
+  tar_target(models_setup, initialise_models(init_db$sensors,
+                                             data_calib,
+                                             data_rad,
+                                             init_db$plots,
+                                             species2calib)),
   
-  ## Create the experimental design ----
-  tar_target(exp_design, create_experimental_design(site_names, 
-                                                    n_replicates)),
+  ## Run the MCMC ----
+  tar_target(models_output, calibrate_models(models_setup$setups,
+                                             n_chains,
+                                             n_iterations,
+                                             n_burning,
+                                             sampling_algo = "DREAMzs")),
   
-  ## Run the Bayesian calibration with model inversion ----
-  tar_target(out_calib, calibrate_lad(init_db,
-                                      data_sl,
-                                      data_rad,
-                                      exp_design,
-                                      species2calib,
-                                      site_names,
-                                      n_chains,
-                                      n_iterations,
-                                      n_burning,
-                                      output_folder = file.path(getwd(), "output/calib"))),
   
+  ## Compare models with LOO-CV and WAIC ----
+  # tar_target(models_comparison, compare_models(models_setup$setups,
+  #                                              models_output)),
+  
+  
+  ## Evaluate models
   
   NULL
   )

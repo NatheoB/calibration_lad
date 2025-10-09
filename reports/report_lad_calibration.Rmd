@@ -1,14 +1,17 @@
 ---
 title: "LAD calibration"
-output: html_document
+output: 
+  html_document:
+    toc: true
 date: "2025-09-24"
+author: "Nathéo BEAUCHAMP"
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
-	echo = FALSE,
-	message = FALSE,
-	warning = FALSE
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE
 )
 ```
 
@@ -16,59 +19,433 @@ knitr::opts_chunk$set(
 library(targets)
 library(dplyr)
 library(ggplot2)
+library(ggforce)
+library(BayesianTools)
 ```
 
+# Motivation of the study
 
-# Observe residuals for each simulation
+This study aims to calibrate Leaf Area Density (LAD), which is defined as the area of leaves per unit of tree crown volume (in $m^2.m^{-3}$). This parameter forms the basis of numerous process-based forest models, such as physiological models that consider photosynthesis and transpiration (e.g. SurEau by Cochard et al., 2021), and forest gap models that estimate light interception (e.g. ForCEEPS by Morin et al., 2021, and Samsara2 by Courbaud et al., 2015).
 
-```{r}
-tar_load(out_residuals)
-```
+Although the leaf area density can be directly estimated from a sample of trees (Stadt & Lieffers, 2000), this method is laborious and difficult to replicate for every tree in a stand. Therefore, indirect methods can be employed, such as model inversion using a hemispherical photograph (Courbaud et al., 2003) or the more recent LiDAR methodology (Wei et al., 2020). However, there is a significant lack of research on LAD in the scientific literature, as there are no large-scale databases containing values for a wide range of European species. Furthermore, the few reported species-specific values vary considerably between studies (Ligot et al., 2014).
 
-```{r}
-out_residuals %>% 
-  dplyr::filter(grepl("IRRES", site)) %>% 
-  ggplot(aes(y = res_pacl, x = lad, color = as.factor(replicate))) +
-  facet_wrap(~site) +
-  geom_point() +
-  geom_hline(yintercept = 0, color = "salmon")
-```
+The aim of this study is to estimate leaf area density (LAD) for nine different species/groups: Fagus sylvatica, Picea abies, Quercus sp., Carpinus betulus, Pseudotsuga menziesii, Pinus sylvestris, Abies alba, Larix decidua and 'other species'. Additionally, Nock et al. (2008) demonstrated intraspecific variation in LAD, with intracrown leaf area decreasing by up to 40% with increasing tree age. This led us to consider the effect of diameter as well. Finally, as crown dimensions are very sensitive to local competition (Touzot et al., 2025), we hypothesise that LAD may also vary in response to competition.
 
-```{r}
-out_residuals %>% 
-  dplyr::filter(grepl("IRRES", site)) %>% 
-  ggplot(aes(y = mae_pacl, x = lad, color = as.factor(replicate))) +
-  facet_wrap(~site) +
-  geom_point() +
-  geom_hline(yintercept = 0, color = "salmon")
-```
+# Methodology
+
+In this study, we used a model inversion methodology, using the ray-tracing model SamsaraLight (Courbaud et al. 2003). We want to estimate the SamsaraLight tree-level parameter LAD using measurements of transmitted light $PACL_{obs}$ (for percentage of above light canopy), based on hemispherical photographs, within 45 plots of different composition and structures. For each plot, trees are inventoried with their crown dimensions, allowing to derive an estimated transmitted light $PACL_{est}$ on virtual sensors with the ray-tracing model SamsaraLight. By doing so, for each virtual sensor of each plot, we have the observed transmitted light $PACL_{obs}$, and the estimated transmitted light given a tree-level value of LAD $PACL_{est}$.
+
+The aim of the calibration is to find a tree-level LAD model that minimize the error between $PACL_{obs}$ and $PACL_{est}$. To do so, we defined the LAD for a tree $i$, of species $s$ in a plot $p$ as $LAD_{i,s,p} = a_{0,s} + a_{0,p} + a_1.DBH_i + \epsilon$, where $a_{0,s}$ is a species-specific intercept, $a_{0,p}$ is a random plot effect, $DBH_i$ is the diameter at breast height of tree $i$ , with the associated estimated coefficient $a_1$ and $\epsilon$ the normal error term. We used a Bayesian approach to estimate the posterior distribution of parameters that minimize the log-likelihood between observed and simulated PACL. As computation of $PACL_{est}$ needs an external call of SamsaraLight model, we used the R package 'BayesianTools' to run a MCMC sampling of parameters with the "DREAMzs" sampling algorithm.
+
+For this study, we used the SamsaraLight model with the R package SamsaraLight (Beauchamp et al., work in progress, intended for publication in the Journal of Open Source Software). The SamsaraLight model was initially developed in Java and included in the Capsis simulation platform (SamsaraLightLoader by Gauthier Ligot). It could be called from R software via the "RCapsis" R package (Fortin et al., 2021). To speed up calculation times and make SamsaraLight easier to use in an R environment, we created the "SamsaraLight" R package. The source code is written in C++ to enable fast calculations and communication with the R environment is handled by the Rcpp package (Eddelbuettel & Balamuta, 2018). The "SamsaRaLight" R package reduces calculation time compared to the previous method (the RCapsis R package calling the Java model SamsaRaLightLoader) as it does not require the creation of a Java server nor Java objects. It also facilitates the use of SamsaraLight within R, as it does not require the creation of an inventory file, instead using R objects and functions directly. The package is functional and stored in a GitHub repository, but it is still subject to private restrictions as discussions regarding co-authorship and the intellectual property rights of the source code need to be concluded.
+
+# Calibration plots
+
+The 45 calibration plots comes from 4 different sources we wiil call IRRES (9 plots, Gauthier Ligot), CLOTURE (23 plots, Gauthier Ligot), INRAe (10 plots, Philippe Balandier) and UCLouvain (3 plots, Mathieu Jonard).
 
 ```{r}
-out_residuals %>% 
-  dplyr::filter(grepl("IRRES", site)) %>% 
-  ggplot(aes(y = rmse_pacl, x = lad, color = as.factor(replicate))) +
-  facet_wrap(~site) +
-  geom_point() +
-  geom_hline(yintercept = 0, color = "salmon")
-```
-
-# Find the best lad value per site
-
-```{r}
-best_lad <- out_residuals %>% 
-  dplyr::group_by(site, replicate) %>%
-  dplyr::summarise(
-    lad_res = lad[which.min(abs(res_pacl))],
-    lad_mae = lad[which.min(abs(mae_pacl))],
-    lad_rmse = lad[which.min(abs(rmse_pacl))]
-  ) %>% 
-  dplyr::group_by(site) %>% 
-  dplyr::summarise(
-    lad_res = mean(lad_res),
-    lad_mae = mean(lad_mae),
-    lad_rmse = mean(lad_rmse)
+plot_stand <- function(init_db, site, cell_size) {
+  
+  # Get trees inventory
+  tmp_data_trees <- init_db$trees[[site]] %>% 
+    dplyr::left_join(init_db$species[[site]], 
+                     by = c("SpCode" = "SpCode_SamsaraLL")) %>% 
+    dplyr::mutate(crown_type = "8E") %>% 
+    dplyr::select(id_tree = Id, 
+                  species_code = SpCode,
+                  species_calib = sp_calib,
+                  x = X, y = Y, dbh_cm = Dbh,
+                  crown_type, h_m = H, hbase_m = CBH, hmax_m = CMRH,
+                  rn_m = RN, rs_m = RS, re_m = RE, rw_m = RW,
+                  crown_openess = CrownOpenness, crown_lad = LAD)
+  
+  
+  # If the plot extent dataframe is empty, set it to the default one
+  tmp_plot_extent <- init_db$plot_extents[[site]]
+  
+  if (!is.null(tmp_plot_extent)) {
+    tmp_plot_extent <- tmp_plot_extent %>% 
+      dplyr::select(x = X, y = Y)
+  }
+  
+  use_rect_zone <- ifelse(is.null(tmp_plot_extent), TRUE, FALSE)
+  
+  
+  # Create a square plot with the inventory in the center
+  tmp_stand <- SamsaRaLight::create_rect_stand(tmp_data_trees, 
+                                               cell_size, 
+                                               tmp_plot_extent,
+                                               use_rect_zone,
+                                               fill_around = FALSE)
+  
+  
+  # Add sensors and shift coordinates inside the rect stand
+  tmp_stand$sensors <- init_db$sensors[[site]] %>% 
+    dplyr::select(id_sensor = id, x, y, h_m = z) %>% 
+    dplyr::mutate(
+      x = x + tmp_stand$info$shift_x,
+      y = y + tmp_stand$info$shift_y
+    )
+  
+  # Add species information to the tree dataset
+  data_plot <- init_db$plots %>% dplyr::filter(name == site)
+  data_species <- init_db$species[[site]]
+  
+  data_trees <- tmp_stand$trees %>% 
+    dplyr::left_join(data_species,
+                     by = c("species_code" = "SpCode_SamsaraLL")) %>% 
+    dplyr::mutate(Essence_Latin = factor(Essence_Latin, levels = data_species$Essence_Latin))
+  
+  
+  ## Create cell dataframe
+  cells_xcenter <- seq(tmp_stand$info$cell_size / 2, 
+                       tmp_stand$info$cell_size * tmp_stand$info$n_cells_x - tmp_stand$info$cell_size / 2,
+                       by = tmp_stand$info$cell_size)
+  
+  cells_ycenter <- seq(tmp_stand$info$cell_size / 2, 
+                       tmp_stand$info$cell_size * tmp_stand$info$n_cells_y - tmp_stand$info$cell_size / 2,
+                       by = tmp_stand$info$cell_size)
+  
+  data_cells <- expand.grid(
+    x_center = cells_xcenter,
+    y_center = cells_ycenter
   )
   
-print.data.frame(best_lad)
+  
+  # Create the plot
+  stand_plot <- ggplot() +
+    coord_equal() +
+    
+    # CELLS 
+    geom_tile(data = data_cells, 
+              mapping = aes(x = x_center, y = y_center), 
+              fill = "white", color = "darkgray")
+  
+  
+  # CORE POLYGON
+  if (!is.null(tmp_stand$inv_zone_df)) {  
+    stand_plot <- stand_plot +
+      geom_polygon(data = tmp_stand$inv_zone_df,
+                   mapping = aes(x = x, y = y),
+                   fill = "yellow", color = "black", alpha = 0.5)
+  }
+  
+  
+  # TREES
+  stand_plot <- stand_plot +
+    geom_ellipse(data = data_trees, 
+                 mapping = aes(x0 = x, y0 = y, 
+                               a = (re_m + rw_m) / 2,
+                               b = (rn_m + rs_m) / 2,
+                               angle = 0,
+                               fill = Essence_Latin)) +
+    scale_fill_manual(values = data_species$Couleur) +
+    labs(fill = "Species") +
+    
+    # SENSORS
+    geom_rect(data = tmp_stand$sensors,
+              mapping = aes(xmin = x - 0.5,
+                            ymin = y - 0.5,
+                            xmax = x + 0.5,
+                            ymax = y + 0.5),
+              color = "red", fill = "black") +
+    
+    # GRAPHIC
+    scale_x_continuous(breaks = seq(0, tmp_stand$info$n_cells_x * tmp_stand$info$cell_size,
+                                    by = tmp_stand$info$cell_size),
+                       labels = round(seq(0, tmp_stand$info$n_cells_x * tmp_stand$info$cell_size,
+                                          by = tmp_stand$info$cell_size),
+                                      digits = 1)) +
+    scale_y_continuous(breaks = seq(0, tmp_stand$info$n_cells_y * tmp_stand$info$cell_size,
+                                    by = tmp_stand$info$cell_size),
+                       labels = round(seq(0, tmp_stand$info$n_cells_y * tmp_stand$info$cell_size,
+                                          by = tmp_stand$info$cell_size),
+                                      digits = 1)) +
+    xlab("") + ylab("") +
+    
+    labs(title = site,
+         subtitle = paste0(round(tmp_stand$info$core_area_ha, 2), "ha - ",
+                           round(tmp_stand$info$core_batot_m2ha, 2), "m2/ha - ",
+                           nrow(tmp_stand$trees), "trees",
+                           "\n",
+                           "(long ", round(data_plot$longitude, 2), ", lat ", 
+                           round(data_plot$latitude, 2), ") - ",
+                           "slope = ", round(data_plot$slope, 1), 
+                           ", aspect = ", round(data_plot$aspect),
+                           ", northToX = ", round(data_plot$northToX))) +
+    
+    theme_minimal() +
+    theme(panel.grid.minor = element_blank(),
+          legend.position = "right",
+          plot.title = element_text(hjust = 0.5),
+          plot.subtitle = element_text(hjust = 0.5)) 
+  
+  # Print plot
+  plot(stand_plot)
+}
 ```
 
+```{r}
+# Get data
+tar_load(init_db)
+
+# Set the cell size, which will not impact the study as we compute light only on sensors
+cell_size <- 10
+
+# Sites names
+site_names <- init_db$plots$name
+```
+
+
+## IRRES
+
+```{r}
+for (site in site_names[grepl("IRRES", site_names)]) {
+  plot_stand(init_db, site, cell_size)
+}
+```
+
+
+## CLOTURE
+
+```{r}
+for (site in site_names[grepl("Cloture", site_names)]) {
+  plot_stand(init_db, site, cell_size)
+}
+```
+
+
+## INRAe
+
+```{r}
+for (site in site_names[unique(c(grep("Ventoux", site_names), grep("Lorris", site_names),  grep("Fontfreyde", site_names)))]) {
+  plot_stand(init_db, site, cell_size)
+}
+```
+
+
+## UCLouvain
+
+```{r}
+for (site in site_names[grepl("Baileux", site_names)]) {
+  plot_stand(init_db, site, cell_size)
+}
+```
+
+
+# First results
+
+```{r}
+tar_load(models_setup)
+tar_load(models_output)
+```
+
+```{r}
+models_setup$exp_design
+```
+
+
+```{r}
+out <- models_output[[1]]
+
+setup <- models_setup$setups[[1]]
+n_species <- setup$n_species
+n_sites <- setup$n_sites
+n_origins <- setup$n_origins
+```
+
+
+We ran 60,000 samplings, with a burning period of 10,000 samplings. We got 3 chains containing each 16,668 saplings. We analyse the output by keeping the last 5,000 samplings of each chain.
+
+The time was about:
+
+```{r}
+print(out$computation_time)
+```
+
+## Species effect
+
+```{r}
+species_sample <- out[1:3] %>% 
+  purrr::map(
+    ~getSample(.x, start = 0, end = NULL, thin = 1,
+               whichParameters = (1:n_species) + 3 + n_sites + n_origins,
+               coda = TRUE) %>%
+      purrr::map(~as.data.frame(.x) %>% 
+                   dplyr::mutate(iteration = row_number()) %>% 
+                   dplyr::relocate(iteration)) %>%
+      dplyr::bind_rows(.id = "subchain") %>% 
+      tidyr::pivot_longer(cols = !c(subchain, iteration),
+                          names_to = "species", values_to = "estimate",
+                          names_prefix = "species.")
+  ) %>% 
+  dplyr::bind_rows(.id = "chain")
+```
+
+
+### Trace
+
+```{r}
+species_sample %>% 
+  ggplot(aes(y = estimate, x = iteration, 
+             color = chain, linetype = subchain)) +
+  geom_line() +
+  facet_wrap(~species) +
+  theme_bw()
+```
+
+
+### Density
+
+```{r}
+summaries_sp <- species_sample %>%
+  dplyr::group_by(species) %>%
+  dplyr::summarise(
+    lower = quantile(estimate, probs = 0.025),
+    median = quantile(estimate, probs = 0.5),
+    upper = quantile(estimate, probs = 0.975)
+  ) %>%
+  dplyr::arrange(median) %>%
+  as.data.frame()
+
+summaries_sp
+
+species_sample %>%
+  ggplot(aes(x = estimate)) +
+  geom_density() +
+  facet_wrap(~species, scales = "free_y") +
+  theme_bw() +
+  geom_vline(data = summaries_sp, aes(xintercept = lower),
+             linewidth = 1.05, color = "salmon", linetype = "dotted") +
+  geom_vline(data = summaries_sp, aes(xintercept = median),
+             linewidth = 1.05, color = "salmon") +
+  geom_vline(data = summaries_sp, aes(xintercept = upper),
+             linewidth = 1.05, color = "salmon", linetype = "dotted")
+```
+
+## DBH effect
+
+```{r}
+dbh_samples <- out[1:3] %>% 
+  purrr::map(
+    ~getSample(.x, start = 0, end = NULL, thin = 1,
+               whichParameters = (1:n_species) + 3 + n_sites + n_origins + n_species,
+               coda = TRUE) %>%
+      purrr::map(~as.data.frame(.x) %>% 
+                   dplyr::mutate(iteration = row_number()) %>% 
+                   dplyr::relocate(iteration)) %>%
+      dplyr::bind_rows(.id = "subchain") %>% 
+      tidyr::pivot_longer(cols = !c(subchain, iteration),
+                          names_to = "species", values_to = "estimate",
+                          names_prefix = "species.")
+  ) %>% 
+  dplyr::bind_rows(.id = "chain")
+```
+
+
+### Trace
+
+```{r}
+dbh_samples %>% 
+  ggplot(aes(y = estimate, x = iteration, 
+             color = chain, linetype = subchain)) +
+  geom_line() +
+  facet_wrap(~species) +
+  theme_bw()
+```
+
+
+### Density
+
+```{r}
+summaries_dbh <- dbh_samples %>%
+  dplyr::group_by(species) %>%
+  dplyr::summarise(
+    lower = quantile(estimate, probs = 0.025),
+    median = quantile(estimate, probs = 0.5),
+    upper = quantile(estimate, probs = 0.975)
+  ) %>%
+  dplyr::arrange(median) %>%
+  as.data.frame()
+
+dbh_samples %>%
+  ggplot(aes(x = estimate)) +
+  geom_density() +
+  facet_wrap(~species, scales = "free_y") +
+  theme_bw() +
+  geom_vline(data = summaries_dbh, aes(xintercept = lower),
+             linewidth = 1.05, color = "salmon", linetype = "dotted") +
+  geom_vline(data = summaries_dbh, aes(xintercept = median),
+             linewidth = 1.05, color = "salmon") +
+  geom_vline(data = summaries_dbh, aes(xintercept = upper),
+             linewidth = 1.05, color = "salmon", linetype = "dotted") +
+  geom_vline(xintercept = 0, linetype = "dashed")
+```
+
+
+## Competition effect
+
+```{r}
+compet_samples <-  out[1:3] %>% 
+  purrr::map(
+    ~getSample(.x, start = 0, end = NULL, thin = 1,
+               whichParameters = (1:n_species) + 3 + n_sites + n_origins + 2*n_species,
+               coda = TRUE) %>%
+      purrr::map(~as.data.frame(.x) %>% 
+                   dplyr::mutate(iteration = row_number()) %>% 
+                   dplyr::relocate(iteration)) %>%
+      dplyr::bind_rows(.id = "subchain") %>% 
+      tidyr::pivot_longer(cols = !c(subchain, iteration),
+                          names_to = "species", values_to = "estimate",
+                          names_prefix = "species.")
+  ) %>% 
+  dplyr::bind_rows(.id = "chain")
+```
+
+
+### Trace
+
+```{r}
+compet_samples %>% 
+  ggplot(aes(y = estimate, x = iteration, 
+             color = chain, linetype = subchain)) +
+  geom_line() +
+  facet_wrap(~species) +
+  theme_bw()
+```
+
+
+### Density
+
+```{r}
+summaries_compet <- compet_samples %>%
+  dplyr::group_by(species) %>%
+  dplyr::summarise(
+    lower = quantile(estimate, probs = 0.025),
+    median = quantile(estimate, probs = 0.5),
+    upper = quantile(estimate, probs = 0.975)
+  ) %>%
+  dplyr::arrange(median) %>%
+  as.data.frame()
+
+compet_samples %>%
+  ggplot(aes(x = estimate)) +
+  geom_density() +
+  facet_wrap(~species, scales = "free_y") +
+  theme_bw() +
+  geom_vline(data = summaries_compet, aes(xintercept = lower),
+             linewidth = 1.05, color = "salmon", linetype = "dotted") +
+  geom_vline(data = summaries_compet, aes(xintercept = median),
+             linewidth = 1.05, color = "salmon") +
+  geom_vline(data = summaries_compet, aes(xintercept = upper),
+             linewidth = 1.05, color = "salmon", linetype = "dotted") +
+  geom_vline(xintercept = 0, linetype = "dashed")
+```
+
+
+
+# Perspectives
+
+There is still problem of convergence, we need to explore why.
+
+Once we are satisfied with the modelling approach, we will study the ecological mechanisms that could underlie the differences between species. Do species with different shade tolerance have different leaf area densities? Do they react differently to competition? **Ecological assumptions still have to be made.**

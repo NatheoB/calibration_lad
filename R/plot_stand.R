@@ -36,9 +36,9 @@ plot_stand <- function(data_stand, data_species,
 
   
     # CORE POLYGON
-  if (!is.null(data_stand$core_polygon)) {  
+  if (!is.null(data_stand$inv_zone_df)) {  
     stand_plot <- stand_plot +
-      geom_polygon(data = data_stand$core_polygon,
+      geom_polygon(data = data_stand$inv_zone_df,
                    mapping = aes(x = x, y = y),
                    fill = "yellow", color = "black", alpha = 0.5)
   }
@@ -61,7 +61,7 @@ plot_stand <- function(data_stand, data_species,
                             ymin = y - 0.5,
                             xmax = x + 0.5,
                             ymax = y + 0.5),
-              color = "black", fill = "black") +
+              color = "red", fill = "black") +
     
     # GRAPHIC
     scale_x_continuous(breaks = seq(0, data_stand$info$n_cells_x * data_stand$info$cell_size,
