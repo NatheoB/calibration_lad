@@ -92,6 +92,12 @@ load_database_from_rdata <- function(init_db_fp,
                    TRUE ~ "other"
                  )))
   
+  
+  # Remove the -1 PACL values
+  db_list$sensors <- db_list$sensors %>% 
+    purrr::map(~.x %>% dplyr::filter(PACLtotal <= 1, 
+                                     PACLtotal >= 0))
+  
   # Return final database
   return(db_list)
 }

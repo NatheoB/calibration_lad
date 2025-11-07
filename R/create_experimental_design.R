@@ -1,15 +1,22 @@
-create_experimental_design <- function(site_names, n_replicate, lad_values) {
+create_experimental_design <- function() {
   
-  expand.grid(
-    site = site_names,
-    replicate = 1:n_replicate
-  ) %>% 
-    tidyr::unite(
-      col = id,
-      site, replicate,
-      sep = "_",
-      remove = FALSE
-    ) %>% 
-    dplyr::relocate(id)
+  data.frame(
+    id_mod = 1,
+    species_specific = c(FALSE),
+    site_rd_effect = c(FALSE),
+    origin_rd_effect = c(FALSE),
+    dbh_effect = c(FALSE),
+    compet_effect = c(FALSE)
+  )
+  
+  # Mettre compet variable aussi
+  
+  # expand.grid(
+  #   species_specific = c(FALSE, TRUE),
+  #   dbh_effect = c(FALSE, TRUE),
+  #   compet_effect = c(FALSE, TRUE)
+  # ) %>%
+  #   dplyr::mutate(id_mod = row_number()) %>%
+  #   dplyr::relocate(id_mod)
   
 }

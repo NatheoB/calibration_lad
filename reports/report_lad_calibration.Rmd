@@ -35,7 +35,7 @@ The aim of this study is to estimate leaf area density (LAD) for nine different 
 
 In this study, we used a model inversion methodology, using the ray-tracing model SamsaraLight (Courbaud et al. 2003). We want to estimate the SamsaraLight tree-level parameter LAD using measurements of transmitted light $PACL_{obs}$ (for percentage of above light canopy), based on hemispherical photographs, within 45 plots of different composition and structures. For each plot, trees are inventoried with their crown dimensions, allowing to derive an estimated transmitted light $PACL_{est}$ on virtual sensors with the ray-tracing model SamsaraLight. By doing so, for each virtual sensor of each plot, we have the observed transmitted light $PACL_{obs}$, and the estimated transmitted light given a tree-level value of LAD $PACL_{est}$.
 
-The aim of the calibration is to find a tree-level LAD model that minimize the error between $PACL_{obs}$ and $PACL_{est}$. To do so, we defined the LAD for a tree $i$, of species $s$ in a plot $p$ as $LAD_{i,s,p} = a_{0,s} + a_{0,p} + a_1.DBH_i + \epsilon$, where $a_{0,s}$ is a species-specific intercept, $a_{0,p}$ is a random plot effect, $DBH_i$ is the diameter at breast height of tree $i$ , with the associated estimated coefficient $a_1$ and $\epsilon$ the normal error term. We used a Bayesian approach to estimate the posterior distribution of parameters that minimize the log-likelihood between observed and simulated PACL. As computation of $PACL_{est}$ needs an external call of SamsaraLight model, we used the R package 'BayesianTools' to run a MCMC sampling of parameters with the "DREAMzs" sampling algorithm.
+The aim of the calibration is to find a tree-level LAD model that minimize the error between $PACL_{obs}$ and $PACL_{est}$. To do so, we defined the LAD for a tree $i$, of species $s$ in a plot $p$ as $LAD_{i,s,p} = a_{0,s} + a_{0,p} + a_{1,s}.DBH_i + a_{2,s}.BAH_i + \epsilon$, where $a_{0,s}$ is a species-specific intercept, $a_{0,p}$ is a random hierarchical site effect, nested within an origin effect (4 origins of the plots within UCLouvain, INRAe, Cloture and IRRES), $DBH_i$ is the diameter at breast height of tree $i$ , with the associated estimated species-specific coefficient $a_{1,s}$, $BAH_i$ the competition index of the tree $i$ (*i.e.* the sum of basal area of trees higher than the tree $i$), with the associated estimated species-specific coefficient $a_{2,s}$, and $\epsilon$ the normal error term. We used a Bayesian approach to estimate the posterior distribution of parameters that minimize the log-likelihood between observed and simulated PACL. As computation of $PACL_{est}$ needs an external call of SamsaraLight model, we used the R package 'BayesianTools' to run a MCMC sampling of parameters with the "DREAMzs" sampling algorithm.
 
 For this study, we used the SamsaraLight model with the R package SamsaraLight (Beauchamp et al., work in progress, intended for publication in the Journal of Open Source Software). The SamsaraLight model was initially developed in Java and included in the Capsis simulation platform (SamsaraLightLoader by Gauthier Ligot). It could be called from R software via the "RCapsis" R package (Fortin et al., 2021). To speed up calculation times and make SamsaraLight easier to use in an R environment, we created the "SamsaraLight" R package. The source code is written in C++ to enable fast calculations and communication with the R environment is handled by the Rcpp package (Eddelbuettel & Balamuta, 2018). The "SamsaRaLight" R package reduces calculation time compared to the previous method (the RCapsis R package calling the Java model SamsaRaLightLoader) as it does not require the creation of a Java server nor Java objects. It also facilitates the use of SamsaraLight within R, as it does not require the creation of an inventory file, instead using R objects and functions directly. The package is functional and stored in a GitHub repository, but it is still subject to private restrictions as discussions regarding co-authorship and the intellectual property rights of the source code need to be concluded.
 
@@ -196,7 +196,6 @@ cell_size <- 10
 site_names <- init_db$plots$name
 ```
 
-
 ## IRRES
 
 ```{r}
@@ -204,7 +203,6 @@ for (site in site_names[grepl("IRRES", site_names)]) {
   plot_stand(init_db, site, cell_size)
 }
 ```
-
 
 ## CLOTURE
 
@@ -214,7 +212,6 @@ for (site in site_names[grepl("Cloture", site_names)]) {
 }
 ```
 
-
 ## INRAe
 
 ```{r}
@@ -222,7 +219,6 @@ for (site in site_names[unique(c(grep("Ventoux", site_names), grep("Lorris", sit
   plot_stand(init_db, site, cell_size)
 }
 ```
-
 
 ## UCLouvain
 
@@ -232,8 +228,115 @@ for (site in site_names[grepl("Baileux", site_names)]) {
 }
 ```
 
+# Preliminary analysis
 
-# First results
+```{r}
+tar_load(lads_method1)
+```
+
+As a preliminary analysis, we tried to fit a mean LAD value for each sensor of each site. To do so, we run the SamsaraLight model on each stand by fixing the same crown LAD values of each tree, and for each sensor, we computed the residuals between the estimated PACL value on the virtual sensor, and the observed PACL on the field for this sensor. We did so for `r length(lads_method1)` values of LAD from `r min(lads_method1)` to `r max(lads_method1)`. By doing so, we could find for each sensor the LAD that minimizes the residuals.
+
+
+```{r}
+tar_load(output_lad_method1)
+
+output_lad_method1 <- output_lad_method1 %>% 
+  dplyr::group_by(site) %>% 
+  dplyr::mutate(
+    site_lad = mean(best_lad[converged]),
+    site_label = paste0(site, " - ", 
+                        round(site_lad, 3), " - ",
+                        sum(converged), "/", n())
+  )
+
+n_facets <- 9
+n_plt <- length(unique(output_lad_method1$site)) %/% n_facets
+
+for (i in 1:n_plt) {
+  
+  tmp_plt <- output_lad_method1 %>% 
+    dplyr::filter(site %in% unique(output_lad_method1$site)[1:9*i]) %>% 
+    
+    ggplot(aes(y = best_lad, x = id_sensor, color = converged)) +
+    facet_wrap(~site_label, scales = "free_x") +
+    geom_point() +
+    scale_color_manual(values = c("salmon", "forestgreen")) +
+    theme_bw() +
+    xlab("Id of the sensor") +
+    ylab("Optimised LAD")
+  
+  print(tmp_plt)
+}
+```
+
+Many sensors did not converged (i.e. best fitting LAD was 5 as the residuals function showed an asymptotic form). Indeed, we could increase as much as we want the trees's LAD, the estimated PACL could not decrease as much as the observed one. PACL is principally linked to the crown geometries, and secondary by the crown LAD. Thus, there are two cases where crown LAD did not influence PACL: (i) for open stands, where the high light on the ground comes principally from unobstructed rays, (ii) for highly crowded stands, where the very low light on the ground comes from the high number of intercepted crowns. Another reason could be linked to the wrong representation of leaves and crown above the sensor, where a simple branch can obstruct the sensor in the field where we considered a simple crown shape that result in incapabilities of representing such a light obstruction with the SamsaraLight model. Consequently, we remove the sensors that did not converged (465/1121 sensors), leading to remove consequently 3 sites where all sensors did not converged: Cloture11, Cloture15, Cloture2.
+
+```{r}
+# Fit logistic regression model
+
+## Fit different models
+model_linear <- glm(converged ~ punobs_horizontal + PACLobs, 
+                    data = output_lad_method1, 
+                    family = binomial)
+
+model_poly <- glm(converged ~ poly(punobs_horizontal, 2) + poly(PACLobs, 2) + I(punobs_horizontal*PACLobs),
+                  data = output_lad_method1, 
+                  family = binomial)
+
+model_svm <- e1071::svm(as.factor(converged) ~ punobs_horizontal + PACLobs, 
+                        data = output_lad_method1, 
+                        kernel = "radial", cost = 1, gamma = 0.1)
+
+model_gam <- mgcv::gam(converged ~ s(punobs_horizontal, PACLobs), 
+                       data = output_lad_method1, family = binomial)
+
+
+## Create a grid to draw the decision boundary
+xrange <- range(output_lad_method1$PACLobs)
+yrange <- range(output_lad_method1$punobs_horizontal)
+grid <- expand.grid(
+  PACLobs = seq(xrange[1], xrange[2], length.out = 200),
+  punobs_horizontal = seq(yrange[1], yrange[2], length.out = 200)
+)
+
+## Predict probabilities
+# grid$prob <- predict(model_poly, newdata = grid, type = "response")
+grid$pred <- predict(model_svm, newdata = grid)
+
+## Plot the converged sensors all site confounded ----
+ggplot(data = output_lad_method1,
+                  mapping = aes(y = punobs_horizontal * 100, x = PACLobs * 100,
+                                color = converged)) +
+  geom_point() +
+  scale_color_manual(values = c("salmon", "forestgreen")) +
+  # stat_contour(data = grid, mapping = aes(z = prob),
+  #              breaks = 0.5, color = "black", linewidth = 1) +
+  geom_contour(data = grid, mapping = aes(z = as.numeric(pred)),
+               breaks = 1.5, color = "black", linewidth = 1) +
+  xlab("Observed total PACL (%)") +
+  ylab("Part of total PACL unobstructed (%)") +
+  labs(color = "Convergence",
+       title = "Relationships between site-specific LAD convergence and PACL characteristics of a sensor",
+       subtitle = paste0(sum(output_lad_method1$converged), 
+                         "/", nrow(output_lad_method1), " sensors converged",
+                         " (i.e. ", round(sum(output_lad_method1$converged) / nrow(output_lad_method1) * 100, 0), "%)")) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size = 12),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "top")
+```
+
+
+The mean LAD over all sensors that converged was about `r round(mean(output_lad_method1$best_lad[output_lad_method1$converged]), 3)`
+
+
+# A simple Bayesian approach
+
+A first Bayesian approach would be to also fit a mean LAD value on the sensors that converged with the previous method, by considering a hierarchical random effect (site into origin, mandatory according to the structure our our dataset).
+
+The model can be written as:
+$LAD_{p} = a_{0} + a_{0,p} + \epsilon$, where $a_{0}$ is the LAD intercept and $a_{0,p}$ is a random hierarchical site effect, nested within an origin effect (4 origins of the plots within UCLouvain, INRAe, Cloture and IRRES).
+
 
 ```{r}
 tar_load(models_setup)
@@ -244,7 +347,6 @@ tar_load(models_output)
 models_setup$exp_design
 ```
 
-
 ```{r}
 out <- models_output[[1]]
 
@@ -254,52 +356,49 @@ n_sites <- setup$n_sites
 n_origins <- setup$n_origins
 ```
 
+We ran 50,000 samplings for each of the 3 chains. We analyse the output by keeping the last 6,500 samplings of each chain.
 
-We ran 60,000 samplings, with a burning period of 10,000 samplings. We got 3 chains containing each 16,668 saplings. We analyse the output by keeping the last 5,000 samplings of each chain.
-
-The time was about:
+The total computation time was about:
 
 ```{r}
 print(out$computation_time)
 ```
 
-## Species effect
+
+## Intercept effect
 
 ```{r}
-species_sample <- out[1:3] %>% 
+intercept_samples <- out$outputs %>%
   purrr::map(
-    ~getSample(.x, start = 0, end = NULL, thin = 1,
-               whichParameters = (1:n_species) + 3 + n_sites + n_origins,
+    ~getSample(.x, start = 10000, end = NULL, thin = 5,
+               whichParameters = which(colnames(
+                 out$outputs[[1]]$chain[[1]]) == "intercept"),
                coda = TRUE) %>%
-      purrr::map(~as.data.frame(.x) %>% 
-                   dplyr::mutate(iteration = row_number()) %>% 
+      purrr::map(~as.data.frame(.x) %>%
+                   dplyr::mutate(iteration = row_number()) %>%
                    dplyr::relocate(iteration)) %>%
-      dplyr::bind_rows(.id = "subchain") %>% 
+      dplyr::bind_rows(.id = "subchain") %>%
       tidyr::pivot_longer(cols = !c(subchain, iteration),
-                          names_to = "species", values_to = "estimate",
-                          names_prefix = "species.")
-  ) %>% 
+                          names_to = "param", values_to = "estimate")
+  ) %>%
   dplyr::bind_rows(.id = "chain")
 ```
-
 
 ### Trace
 
 ```{r}
-species_sample %>% 
-  ggplot(aes(y = estimate, x = iteration, 
+intercept_samples %>%
+
+  ggplot(aes(y = estimate, x = iteration,
              color = chain, linetype = subchain)) +
   geom_line() +
-  facet_wrap(~species) +
   theme_bw()
 ```
-
 
 ### Density
 
 ```{r}
-summaries_sp <- species_sample %>%
-  dplyr::group_by(species) %>%
+summaries_intercept <- intercept_samples %>% 
   dplyr::summarise(
     lower = quantile(estimate, probs = 0.025),
     median = quantile(estimate, probs = 0.5),
@@ -308,144 +407,571 @@ summaries_sp <- species_sample %>%
   dplyr::arrange(median) %>%
   as.data.frame()
 
-summaries_sp
+summaries_intercept
 
-species_sample %>%
+intercept_samples %>%
+
   ggplot(aes(x = estimate)) +
   geom_density() +
-  facet_wrap(~species, scales = "free_y") +
   theme_bw() +
-  geom_vline(data = summaries_sp, aes(xintercept = lower),
+  geom_vline(data = summaries_intercept, aes(xintercept = lower),
              linewidth = 1.05, color = "salmon", linetype = "dotted") +
-  geom_vline(data = summaries_sp, aes(xintercept = median),
+  geom_vline(data = summaries_intercept, aes(xintercept = median),
              linewidth = 1.05, color = "salmon") +
-  geom_vline(data = summaries_sp, aes(xintercept = upper),
-             linewidth = 1.05, color = "salmon", linetype = "dotted")
-```
-
-## DBH effect
-
-```{r}
-dbh_samples <- out[1:3] %>% 
-  purrr::map(
-    ~getSample(.x, start = 0, end = NULL, thin = 1,
-               whichParameters = (1:n_species) + 3 + n_sites + n_origins + n_species,
-               coda = TRUE) %>%
-      purrr::map(~as.data.frame(.x) %>% 
-                   dplyr::mutate(iteration = row_number()) %>% 
-                   dplyr::relocate(iteration)) %>%
-      dplyr::bind_rows(.id = "subchain") %>% 
-      tidyr::pivot_longer(cols = !c(subchain, iteration),
-                          names_to = "species", values_to = "estimate",
-                          names_prefix = "species.")
-  ) %>% 
-  dplyr::bind_rows(.id = "chain")
-```
-
-
-### Trace
-
-```{r}
-dbh_samples %>% 
-  ggplot(aes(y = estimate, x = iteration, 
-             color = chain, linetype = subchain)) +
-  geom_line() +
-  facet_wrap(~species) +
-  theme_bw()
-```
-
-
-### Density
-
-```{r}
-summaries_dbh <- dbh_samples %>%
-  dplyr::group_by(species) %>%
-  dplyr::summarise(
-    lower = quantile(estimate, probs = 0.025),
-    median = quantile(estimate, probs = 0.5),
-    upper = quantile(estimate, probs = 0.975)
-  ) %>%
-  dplyr::arrange(median) %>%
-  as.data.frame()
-
-dbh_samples %>%
-  ggplot(aes(x = estimate)) +
-  geom_density() +
-  facet_wrap(~species, scales = "free_y") +
-  theme_bw() +
-  geom_vline(data = summaries_dbh, aes(xintercept = lower),
-             linewidth = 1.05, color = "salmon", linetype = "dotted") +
-  geom_vline(data = summaries_dbh, aes(xintercept = median),
-             linewidth = 1.05, color = "salmon") +
-  geom_vline(data = summaries_dbh, aes(xintercept = upper),
-             linewidth = 1.05, color = "salmon", linetype = "dotted") +
-  geom_vline(xintercept = 0, linetype = "dashed")
-```
-
-
-## Competition effect
-
-```{r}
-compet_samples <-  out[1:3] %>% 
-  purrr::map(
-    ~getSample(.x, start = 0, end = NULL, thin = 1,
-               whichParameters = (1:n_species) + 3 + n_sites + n_origins + 2*n_species,
-               coda = TRUE) %>%
-      purrr::map(~as.data.frame(.x) %>% 
-                   dplyr::mutate(iteration = row_number()) %>% 
-                   dplyr::relocate(iteration)) %>%
-      dplyr::bind_rows(.id = "subchain") %>% 
-      tidyr::pivot_longer(cols = !c(subchain, iteration),
-                          names_to = "species", values_to = "estimate",
-                          names_prefix = "species.")
-  ) %>% 
-  dplyr::bind_rows(.id = "chain")
-```
-
-
-### Trace
-
-```{r}
-compet_samples %>% 
-  ggplot(aes(y = estimate, x = iteration, 
-             color = chain, linetype = subchain)) +
-  geom_line() +
-  facet_wrap(~species) +
-  theme_bw()
-```
-
-
-### Density
-
-```{r}
-summaries_compet <- compet_samples %>%
-  dplyr::group_by(species) %>%
-  dplyr::summarise(
-    lower = quantile(estimate, probs = 0.025),
-    median = quantile(estimate, probs = 0.5),
-    upper = quantile(estimate, probs = 0.975)
-  ) %>%
-  dplyr::arrange(median) %>%
-  as.data.frame()
-
-compet_samples %>%
-  ggplot(aes(x = estimate)) +
-  geom_density() +
-  facet_wrap(~species, scales = "free_y") +
-  theme_bw() +
-  geom_vline(data = summaries_compet, aes(xintercept = lower),
-             linewidth = 1.05, color = "salmon", linetype = "dotted") +
-  geom_vline(data = summaries_compet, aes(xintercept = median),
-             linewidth = 1.05, color = "salmon") +
-  geom_vline(data = summaries_compet, aes(xintercept = upper),
+  geom_vline(data = summaries_intercept, aes(xintercept = upper),
              linewidth = 1.05, color = "salmon", linetype = "dotted") +
   geom_vline(xintercept = 0, linetype = "dashed")
 ```
 
 
 
-# Perspectives
+<!-- ## Species effect -->
 
-There is still problem of convergence, we need to explore why.
+<!-- ```{r} -->
 
-Once we are satisfied with the modelling approach, we will study the ecological mechanisms that could underlie the differences between species. Do species with different shade tolerance have different leaf area densities? Do they react differently to competition? **Ecological assumptions still have to be made.**
+<!-- species_sample <- out$outputs %>%  -->
+
+<!--   purrr::map( -->
+
+<!--     ~getSample(.x, start = 10000, end = NULL, thin = 1, -->
+
+<!--                whichParameters = (1:n_species) + 3 + n_sites + n_origins, -->
+
+<!--                coda = TRUE) %>% -->
+
+<!--       purrr::map(~as.data.frame(.x) %>%  -->
+
+<!--                    dplyr::mutate(iteration = row_number()) %>%  -->
+
+<!--                    dplyr::relocate(iteration)) %>% -->
+
+<!--       dplyr::bind_rows(.id = "subchain") %>%  -->
+
+<!--       tidyr::pivot_longer(cols = !c(subchain, iteration), -->
+
+<!--                           names_to = "species", values_to = "estimate", -->
+
+<!--                           names_prefix = "species.") -->
+
+<!--   ) %>%  -->
+
+<!--   dplyr::bind_rows(.id = "chain") -->
+
+<!-- ``` -->
+
+<!-- ### Trace -->
+
+<!-- ```{r} -->
+
+<!-- species_sample %>%  -->
+
+<!--   ggplot(aes(y = estimate, x = iteration,  -->
+
+<!--              color = chain, linetype = subchain)) + -->
+
+<!--   geom_line() + -->
+
+<!--   facet_wrap(~species) + -->
+
+<!--   theme_bw() -->
+
+<!-- ``` -->
+
+<!-- ### Density -->
+
+<!-- ```{r} -->
+
+<!-- summaries_sp <- species_sample %>% -->
+
+<!--   dplyr::group_by(species) %>% -->
+
+<!--   dplyr::summarise( -->
+
+<!--     lower = quantile(estimate, probs = 0.025), -->
+
+<!--     median = quantile(estimate, probs = 0.5), -->
+
+<!--     upper = quantile(estimate, probs = 0.975) -->
+
+<!--   ) %>% -->
+
+<!--   dplyr::arrange(median) %>% -->
+
+<!--   as.data.frame() -->
+
+<!-- summaries_sp -->
+
+<!-- species_sample %>% -->
+
+<!--   ggplot(aes(x = estimate)) + -->
+
+<!--   geom_density() + -->
+
+<!--   facet_wrap(~species, scales = "free_y") + -->
+
+<!--   theme_bw() + -->
+
+<!--   geom_vline(data = summaries_sp, aes(xintercept = lower), -->
+
+<!--              linewidth = 1.05, color = "salmon", linetype = "dotted") + -->
+
+<!--   geom_vline(data = summaries_sp, aes(xintercept = median), -->
+
+<!--              linewidth = 1.05, color = "salmon") + -->
+
+<!--   geom_vline(data = summaries_sp, aes(xintercept = upper), -->
+
+<!--              linewidth = 1.05, color = "salmon", linetype = "dotted") -->
+
+<!-- ``` -->
+
+<!-- ## DBH effect -->
+
+<!-- ```{r} -->
+
+<!-- dbh_samples <- out$outputs %>%  -->
+
+<!--   purrr::map( -->
+
+<!--     ~getSample(.x, start = 10000, end = NULL, thin = 1, -->
+
+<!--                whichParameters = (1:n_species) + 3 + n_sites + n_origins + n_species, -->
+
+<!--                coda = TRUE) %>% -->
+
+<!--       purrr::map(~as.data.frame(.x) %>%  -->
+
+<!--                    dplyr::mutate(iteration = row_number()) %>%  -->
+
+<!--                    dplyr::relocate(iteration)) %>% -->
+
+<!--       dplyr::bind_rows(.id = "subchain") %>%  -->
+
+<!--       tidyr::pivot_longer(cols = !c(subchain, iteration), -->
+
+<!--                           names_to = "species", values_to = "estimate", -->
+
+<!--                           names_prefix = "species.") -->
+
+<!--   ) %>%  -->
+
+<!--   dplyr::bind_rows(.id = "chain") -->
+
+<!-- ``` -->
+
+<!-- ### Trace -->
+
+<!-- ```{r} -->
+
+<!-- dbh_samples %>%  -->
+
+<!--   ggplot(aes(y = estimate, x = iteration,  -->
+
+<!--              color = chain, linetype = subchain)) + -->
+
+<!--   geom_line() + -->
+
+<!--   facet_wrap(~species) + -->
+
+<!--   theme_bw() -->
+
+<!-- ``` -->
+
+<!-- ### Density -->
+
+<!-- ```{r} -->
+
+<!-- summaries_dbh <- dbh_samples %>% -->
+
+<!--   dplyr::group_by(species) %>% -->
+
+<!--   dplyr::summarise( -->
+
+<!--     lower = quantile(estimate, probs = 0.025), -->
+
+<!--     median = quantile(estimate, probs = 0.5), -->
+
+<!--     upper = quantile(estimate, probs = 0.975) -->
+
+<!--   ) %>% -->
+
+<!--   dplyr::arrange(median) %>% -->
+
+<!--   as.data.frame() -->
+
+<!-- dbh_samples %>% -->
+
+<!--   ggplot(aes(x = estimate)) + -->
+
+<!--   geom_density() + -->
+
+<!--   facet_wrap(~species, scales = "free_y") + -->
+
+<!--   theme_bw() + -->
+
+<!--   geom_vline(data = summaries_dbh, aes(xintercept = lower), -->
+
+<!--              linewidth = 1.05, color = "salmon", linetype = "dotted") + -->
+
+<!--   geom_vline(data = summaries_dbh, aes(xintercept = median), -->
+
+<!--              linewidth = 1.05, color = "salmon") + -->
+
+<!--   geom_vline(data = summaries_dbh, aes(xintercept = upper), -->
+
+<!--              linewidth = 1.05, color = "salmon", linetype = "dotted") + -->
+
+<!--   geom_vline(xintercept = 0, linetype = "dashed") -->
+
+<!-- ``` -->
+
+<!-- ## Competition effect -->
+
+<!-- The competition effect is the BAHT (basal area of higher trees, in $m^2.ha{-1}$), i.e. similar to BAL but considering the higher trees, not the larger ones). -->
+
+<!-- ```{r} -->
+
+<!-- compet_samples <-  out$outputs %>%  -->
+
+<!--   purrr::map( -->
+
+<!--     ~getSample(.x, start = 10000, end = NULL, thin = 1, -->
+
+<!--                whichParameters = (1:n_species) + 3 + n_sites + n_origins + 2*n_species, -->
+
+<!--                coda = TRUE) %>% -->
+
+<!--       purrr::map(~as.data.frame(.x) %>%  -->
+
+<!--                    dplyr::mutate(iteration = row_number()) %>%  -->
+
+<!--                    dplyr::relocate(iteration)) %>% -->
+
+<!--       dplyr::bind_rows(.id = "subchain") %>%  -->
+
+<!--       tidyr::pivot_longer(cols = !c(subchain, iteration), -->
+
+<!--                           names_to = "species", values_to = "estimate", -->
+
+<!--                           names_prefix = "species.") -->
+
+<!--   ) %>%  -->
+
+<!--   dplyr::bind_rows(.id = "chain") -->
+
+<!-- ``` -->
+
+<!-- ### Trace -->
+
+<!-- ```{r} -->
+
+<!-- compet_samples %>%  -->
+
+<!--   ggplot(aes(y = estimate, x = iteration,  -->
+
+<!--              color = chain, linetype = subchain)) + -->
+
+<!--   geom_line() + -->
+
+<!--   facet_wrap(~species) + -->
+
+<!--   theme_bw() -->
+
+<!-- ``` -->
+
+<!-- ### Density -->
+
+<!-- ```{r} -->
+
+<!-- summaries_compet <- compet_samples %>% -->
+
+<!--   dplyr::group_by(species) %>% -->
+
+<!--   dplyr::summarise( -->
+
+<!--     lower = quantile(estimate, probs = 0.025), -->
+
+<!--     median = quantile(estimate, probs = 0.5), -->
+
+<!--     upper = quantile(estimate, probs = 0.975) -->
+
+<!--   ) %>% -->
+
+<!--   dplyr::arrange(median) %>% -->
+
+<!--   as.data.frame() -->
+
+<!-- compet_samples %>% -->
+
+<!--   ggplot(aes(x = estimate)) + -->
+
+<!--   geom_density() + -->
+
+<!--   facet_wrap(~species, scales = "free_y") + -->
+
+<!--   theme_bw() + -->
+
+<!--   geom_vline(data = summaries_compet, aes(xintercept = lower), -->
+
+<!--              linewidth = 1.05, color = "salmon", linetype = "dotted") + -->
+
+<!--   geom_vline(data = summaries_compet, aes(xintercept = median), -->
+
+<!--              linewidth = 1.05, color = "salmon") + -->
+
+<!--   geom_vline(data = summaries_compet, aes(xintercept = upper), -->
+
+<!--              linewidth = 1.05, color = "salmon", linetype = "dotted") + -->
+
+<!--   geom_vline(xintercept = 0, linetype = "dashed") -->
+
+<!-- ``` -->
+
+
+
+## Site and origin effects
+
+```{r}
+random_samples <- out$outputs %>%
+  purrr::map(
+    ~getSample(.x, start = 8000, end = NULL, thin = 1,
+               whichParameters = 1:(n_sites+n_origins) + 3,
+               coda = TRUE) %>%
+      purrr::map(~as.data.frame(.x) %>%
+                   dplyr::mutate(iteration = row_number()) %>%
+                   dplyr::relocate(iteration)) %>%
+      dplyr::bind_rows(.id = "subchain") %>%
+      tidyr::pivot_longer(cols = !c(subchain, iteration),
+                          names_to = "param", values_to = "estimate") %>%
+      tidyr::separate(param, c("param", "modality"), sep = "\\.")
+  ) %>%
+  dplyr::bind_rows(.id = "chain")
+```
+
+### Trace - origins
+
+```{r}
+random_samples %>%
+  dplyr::filter(param == "origin") %>%
+
+  ggplot(aes(y = estimate, x = iteration,
+             color = chain, linetype = subchain)) +
+  geom_line() +
+  facet_wrap(~modality) +
+  theme_bw()
+```
+
+### Density - origins
+
+```{r}
+summaries_origins <- random_samples %>%
+  dplyr::filter(param == "origin") %>%
+  dplyr::group_by(modality) %>%
+  dplyr::summarise(
+    lower = quantile(estimate, probs = 0.025),
+    median = quantile(estimate, probs = 0.5),
+    upper = quantile(estimate, probs = 0.975)
+  ) %>%
+  dplyr::arrange(median) %>%
+  as.data.frame()
+
+random_samples %>%
+  dplyr::filter(param == "origin") %>%
+
+  ggplot(aes(x = estimate)) +
+  geom_density() +
+  facet_wrap(~modality, scales = "free_y") +
+  theme_bw() +
+  geom_vline(data = summaries_origins, aes(xintercept = lower),
+             linewidth = 1.05, color = "salmon", linetype = "dotted") +
+  geom_vline(data = summaries_origins, aes(xintercept = median),
+             linewidth = 1.05, color = "salmon") +
+  geom_vline(data = summaries_origins, aes(xintercept = upper),
+             linewidth = 1.05, color = "salmon", linetype = "dotted") +
+  geom_vline(xintercept = 0, linetype = "dashed")
+```
+
+### Trace - sites
+
+```{r}
+random_samples %>%
+  dplyr::filter(grepl("Cloture", modality)) %>%
+
+  ggplot(aes(y = estimate, x = iteration,
+             color = chain, linetype = subchain)) +
+  geom_line() +
+  facet_wrap(~modality) +
+  theme_bw() +
+  theme(strip.text.x = element_text(
+    size = 6,
+    margin = margin(0,0,0,0, "cm")))
+```
+
+```{r}
+random_samples %>%
+  dplyr::filter(!grepl("Cloture", modality)) %>%
+
+  ggplot(aes(y = estimate, x = iteration,
+             color = chain, linetype = subchain)) +
+  geom_line() +
+  facet_wrap(~modality) +
+  theme_bw() +
+  theme(strip.text.x = element_text(
+    size = 6,
+    margin = margin(0,0,0,0, "cm")))
+```
+
+### Density - sites
+
+```{r}
+summaries_sitesCloture <- random_samples %>%
+  dplyr::filter(grepl("Cloture", modality)) %>%
+
+  dplyr::group_by(modality) %>%
+  dplyr::summarise(
+    lower = quantile(estimate, probs = 0.025),
+    median = quantile(estimate, probs = 0.5),
+    upper = quantile(estimate, probs = 0.975)
+  ) %>%
+  dplyr::arrange(median) %>%
+  as.data.frame()
+
+random_samples %>%
+  dplyr::filter(grepl("Cloture", modality)) %>%
+
+  ggplot(aes(x = estimate)) +
+  geom_density() +
+  facet_wrap(~modality, scales = "free_y") +
+  theme_bw() +
+  theme(strip.text.x = element_text(
+    size = 6,
+    margin = margin(0,0,0,0, "cm"))) +
+  geom_vline(data = summaries_sitesCloture, aes(xintercept = lower),
+             linewidth = 1.05, color = "salmon", linetype = "dotted") +
+  geom_vline(data = summaries_sitesCloture, aes(xintercept = median),
+             linewidth = 1.05, color = "salmon") +
+  geom_vline(data = summaries_sitesCloture, aes(xintercept = upper),
+             linewidth = 1.05, color = "salmon", linetype = "dotted") +
+  geom_vline(xintercept = 0, linetype = "dashed")
+```
+
+```{r}
+summaries_sitesOther <- random_samples %>%
+  dplyr::filter(!grepl("Cloture", modality)) %>%
+
+  dplyr::group_by(modality) %>%
+  dplyr::summarise(
+    lower = quantile(estimate, probs = 0.025),
+    median = quantile(estimate, probs = 0.5),
+    upper = quantile(estimate, probs = 0.975)
+  ) %>%
+  dplyr::arrange(median) %>%
+  as.data.frame()
+
+random_samples %>%
+  dplyr::filter(!grepl("Cloture", modality)) %>%
+
+  ggplot(aes(x = estimate)) +
+  geom_density() +
+  facet_wrap(~modality, scales = "free_y") +
+  theme_bw() +
+  theme(strip.text.x = element_text(
+    size = 6,
+    margin = margin(0,0,0,0, "cm"))) +
+  geom_vline(data = summaries_sitesOther, aes(xintercept = lower),
+             linewidth = 1.05, color = "salmon", linetype = "dotted") +
+  geom_vline(data = summaries_sitesOther, aes(xintercept = median),
+             linewidth = 1.05, color = "salmon") +
+  geom_vline(data = summaries_sitesOther, aes(xintercept = upper),
+             linewidth = 1.05, color = "salmon", linetype = "dotted") +
+  geom_vline(xintercept = 0, linetype = "dashed")
+```
+
+<!-- ## Residuals -->
+
+<!-- ```{r} -->
+
+<!-- tar_load(models_summary_pointwise) -->
+
+<!-- ``` -->
+
+<!-- ```{r} -->
+
+<!-- models_summary_pointwise[[1]]$residuals %>%  -->
+
+<!--   as.data.frame() %>%  -->
+
+<!--   tidyr::pivot_longer(everything(), -->
+
+<!--                       names_to = "obs", -->
+
+<!--                       values_to = "res") %>%  -->
+
+<!--   dplyr::mutate(obs = as.numeric(gsub("V", "", obs))) %>%  -->
+
+<!--   ggplot(aes(x = res)) + -->
+
+<!--   geom_density() + -->
+
+<!--   theme_bw() -->
+
+<!-- ``` -->
+
+<!-- ## Predictions -->
+
+<!-- ```{r} -->
+
+<!-- pred_samples <-  out$outputs %>%  -->
+
+<!--   purrr::map( -->
+
+<!--     ~getSample(.x, start = 10000, end = NULL, thin = 1, -->
+
+<!--                whichParameters = (1:(n_species*3)) + 3 + n_sites + n_origins, -->
+
+<!--                coda = TRUE) %>% -->
+
+<!--       purrr::map(~as.data.frame(.x) %>%  -->
+
+<!--                    dplyr::mutate(iteration = row_number()) %>%  -->
+
+<!--                    dplyr::relocate(iteration)) %>% -->
+
+<!--       dplyr::bind_rows(.id = "subchain") %>%  -->
+
+<!--       tidyr::pivot_longer(cols = !c(subchain, iteration), -->
+
+<!--                           names_pattern = "(.*)\\.(.*)", -->
+
+<!--                           names_to = c("param", "species"),  -->
+
+<!--                           values_to = "estimate") -->
+
+<!--   ) %>%  -->
+
+<!--   dplyr::bind_rows(.id = "chain") -->
+
+<!-- preds <- expand.grid( -->
+
+<!--   species = unique(pred_samples$species), -->
+
+<!--   dbh_cm = 10: -->
+
+<!-- ) -->
+
+<!-- ``` -->
+
+<!-- # Going further with the Bayesian approach -->
+
+<!-- # Limits -->
+
+<!-- **There is still problem of convergence,** we need to explore why. Intercept and slope can compensate for each other (e.g., high intercept with negative slope vs low intercept with positive slope), the model may not be fully identifiable with the current data: Standardize predictors (like dbh and BALh) to reduce correlation with the intercept, consider covariance between slopes and intercept or constrain parameters using more informative priors (e.g. high or low LAD ?) -->
+
+<!-- **We may miss some important environmental factors in this study.** One hypothesis is that LAD could be highly dependent on variables that we do not consider, such as the tree sanitary health or the site water availability. Here, it may not be possible to consider a climatic effect, because the intra-origin variability in climate may not be sufficient (for example, the 24 Cloture sites are located in the same area). The effect of climate may be contained within the origin random effect, that may also account for other environmental constraints and the protocol effect. -->
+
+<!-- **We could imagine** **another index of competition such as dbh/dg**, which represents more a relative index of competition (i.e. a status within the stand), rather than an absolute index such as BALh. Moreover, the effects are linear, but we could imagine transformations to model for example a plateau effect for competition ? -->
+
+
+<!-- # Perspectives -->
+
+<!-- Once we are satisfied with the modelling approach, we will study the ecological mechanisms that could underlie the differences between species. Do species with different shade tolerance have different leaf area densities? Do they react differently to competition? **Ecological assumptions still have to be made.** -->

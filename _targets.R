@@ -6,7 +6,9 @@ library(targets)
 # plan(callr)
 
 # Source functions in R folder
-lapply(grep("R$", list.files("R", recursive = TRUE), value = TRUE), function(x) source(file.path("R", x)))
+lapply(grep("R$", list.files("R", recursive = TRUE), value = TRUE), 
+       function(x) source(file.path("R", x)))
+
 
 # Set options (i.e. clustermq.scheduler for multiprocess computing)
 options(tidyverse.quiet = TRUE, clustermq.scheduler = "multiprocess")
@@ -16,7 +18,7 @@ tar_option_set(packages = c("dplyr", "tidyr", "data.table",
                             "ggplot2", "ggforce", "sf",
                             "SamsaRaLight",
                             "BayesianTools", "extraDistr", "loo",
-                            "rlang"))
+                            "rlang", "e1071", "mgcv"))
 
 # List of targets
 list(
@@ -26,21 +28,15 @@ list(
   ## Global parameters ----
   tar_target(SEED, 5030),
   
-  ## SL parameters ----
-
-  
-  ## Experimental parameters ----
-
-  
   ## Calibration parameters ----
   tar_target(n_chains, 3),
   tar_target(n_iterations, 50000),
   tar_target(n_burning, 0),
-
+  tar_target(n_analysis, 9000),
   
   
   
-  # PREPARE THE CALIBRATION DATASET ----
+  # PREPARE CALIBRATION ----
   
   ## Load and clean the initial database ----
   tar_target(init_db_fp, "data/dataBase.RData", format = "file"),
@@ -50,44 +46,86 @@ list(
                                                plot_infos_fp)),
   
   
-  ## Set the species to calibrate ----
-  tar_target(sp_calib_occ, get_occurences_species2calib(init_db)),
-  tar_target(species2calib, as.character(unique(sp_calib_occ$species))),
+  ## Catch monthly radiation data from PVGIS ----
+  tar_target(data_rad, get_radiation_dataset(init_db$plots)),
   
   
   ## Create calibration plots from tree inventories ----
   tar_target(data_calib, create_calibration_stands(init_db,
                                                    "output/initial_sites",
                                                    SEED)),
-  
-  ## Catch monthly radiation data from PVGIS ----
-  tar_target(data_rad, get_radiation_dataset(init_db$plots)),
-  
-  
 
+  ## Get the sensors to calibrate ----
+  tar_target(thresholds_punobs, c(0.4, 0.8, 1)),
+  
+  tar_target(data_sensors_punobs, get_sensors_punobs(init_db,
+                                                     data_calib,
+                                                     data_rad,
+                                                     thresholds_punobs,
+                                                     "output/initial_sensors")),
+  
   # CALIBRATE THE LAD ----
+  
+  ## METHOD 1: simple minimization of residuals ----
+
+  tar_target(lads_method1, seq(0.001, 5, by = 0.001)),
+  
+  tar_target(output_pacl_method1, get_sensors_pacl_sitespecificLAD(lads_method1,
+                                                                   data_calib,
+                                                                   data_rad,
+                                                                   init_db$plots)),
+  
+  tar_target(output_lad_method1, fit_lad_method1(output_pacl_method1, 
+                                                 data_sensors_punobs,
+                                                 "output/residuals_sensors")),
+  
+  
+  ## METHOD 2: Bayesian calibration ----
+  
+  ## Get the species to calibrate ----
+  tar_target(sp_calib_occ, get_occurences_species2calib(init_db)),
+  tar_target(species2calib, as.character(unique(sp_calib_occ$species))),
+  
+  
+  ## Create the experimental design ----
+  tar_target(exp_design, create_experimental_design()),
+
 
   ## Initialise the Bayesian setups ----
-  tar_target(models_setup, initialise_models(init_db$sensors,
+  # 465/1121 sensors had been removed
+  # 3 sites had been removed : Cloture11, Cloture15, Cloture2
+  tar_target(models_setup, initialise_models(exp_design,
+                                             init_db$sensors,
+                                             init_db$plots,
                                              data_calib,
                                              data_rad,
-                                             init_db$plots,
+                                             output_lad_method1,
                                              species2calib)),
-  
+
+
   ## Run the MCMC ----
   tar_target(models_output, calibrate_models(models_setup$setups,
                                              n_chains,
                                              n_iterations,
                                              n_burning,
                                              sampling_algo = "DREAMzs")),
+
+
+  # # COMPARE AND EVALUATE THE MODELS ----
+  # 
+  # ## Get pointwise matrices (log-likelihood and residuals) ----
+  # tar_target(models_summary_pointwise, get_summary_pointwise_models(models_setup$setups,
+  #                                                                   models_output,
+  #                                                                   n_analysis)),
   
   
   ## Compare models with LOO-CV and WAIC ----
-  # tar_target(models_comparison, compare_models(models_setup$setups,
-  #                                              models_output)),
+  # tar_target(models_comparison, compare_models(models_summary_pointwise)),
+  # 
   
+  ## Evaluate models with RMSE ----
+  # tar_target(models_evaluation, evaluate_models(models_summary_pointwise)),
   
-  ## Evaluate models
   
   NULL
   )

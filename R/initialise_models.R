@@ -1,23 +1,10 @@
-initialise_models <- function(data_sensors, 
-                              data_calib, data_rad, data_plots,
+initialise_models <- function(exp_design,
+                              data_sensors,
+                              data_plots,
+                              data_calib,
+                              data_rad,
+                              output_lad_method1,
                               species2calib) {
-  
-  ## Models' experimental design ----
-  # exp_design <- expand.grid(
-  #   species_specific = c(FALSE, TRUE),
-  #   dbh_effect = c(FALSE, TRUE),
-  #   compet_effect = c(FALSE, TRUE)
-  # ) %>% 
-  #   dplyr::mutate(id_mod = row_number()) %>% 
-  #   dplyr::relocate(id_mod)
-  
-  exp_design <- expand.grid(
-    species_specific = c(TRUE),
-    dbh_effect = c(TRUE),
-    compet_effect = c(TRUE)
-  ) %>% 
-    dplyr::mutate(id_mod = row_number()) %>% 
-    dplyr::relocate(id_mod)
   
   
   ## Create the Bayesian setup for each model ----
@@ -26,7 +13,10 @@ initialise_models <- function(data_sensors,
     
     model_setups[[i]] <- initialise_model(exp_design[i,],
                                           data_sensors, 
-                                          data_calib, data_rad, data_plots,
+                                          data_plots,
+                                          data_calib, 
+                                          data_rad,
+                                          output_lad_method1,
                                           species2calib)
   }
   
@@ -42,7 +32,10 @@ initialise_models <- function(data_sensors,
 
 initialise_model <- function(mod_design,
                              data_sensors, 
-                             data_calib, data_rad, data_plots,
+                             data_plots,
+                             data_calib, 
+                             data_rad,
+                             output_lad_method1,
                              species2calib) {
   
   # BayesianTools consider global variables during the MCMC sampling
@@ -53,9 +46,9 @@ initialise_model <- function(mod_design,
   # SUB-FUNCTIONS ----
   
   ## FUNCTION TO RUN SAMSARALIGHT ----
-  run_sl_standXlad <- function(data_calib, 
+  run_sl_standXlad <- function(data_plots,
+                               data_calib, 
                                data_rad,
-                               data_plots,
                                site, 
                                lad_sites,
                                lad_species,
@@ -104,23 +97,24 @@ initialise_model <- function(mod_design,
              n_cells_x = data_calib[[site]]$info$n_cells_x, 
              n_cells_y = data_calib[[site]]$info$n_cells_y,
              turbid_medium = TRUE,
-             trunk_interception = FALSE,
+             trunk_interception = TRUE,
              soc = TRUE,
              height_anglemin = 15,
              direct_startoffset = 0, # =directAngleStep / 2 by default, but =0 for samsara2
              direct_anglestep = 5,
-             diffuse_anglestep = 15)
+             diffuse_anglestep = 15,
+             detailed_output = FALSE)
     
     # Sl sensors output for the plot
-    tmp_out_samsalight$sensors
+    tmp_out_samsalight$output$sensors
     
   }
   
   ## FUNCTION TO RUN SAMSARALIGHT ON ALL STANDS ----
   compute_pacl_residuals <- function(data_sensors,
+                                     data_plots,
                                      data_calib,
                                      data_rad,
-                                     data_plots,
                                      lad_sites,
                                      lad_species,
                                      lad_dbh,
@@ -142,9 +136,9 @@ initialise_model <- function(mod_design,
     for (site in site_names) {
       
       # Sl sensors output for a given LAD model in a given plot
-      tmp_out_sl <- run_sl_standXlad(data_calib, 
-                                     data_rad, 
-                                     data_plots,
+      tmp_out_sl <- run_sl_standXlad(data_plots,
+                                     data_calib, 
+                                     data_rad,
                                      site, 
                                      lad_sites,
                                      lad_species,
@@ -156,7 +150,7 @@ initialise_model <- function(mod_design,
         
         # Estimated pacl from virtual sensors
         tmp_out_sl %>%
-          dplyr::select(id_sensor, pacl_sl = pacl_slope),
+          dplyr::select(id_sensor, pacl_sl = pacl),
         
         # Measured pacl from field sensor
         data_sensors[[site]] %>%
@@ -180,12 +174,10 @@ initialise_model <- function(mod_design,
   
   
   
-  ## FUNCTION TO COMPUTE LOG POSTERIOR FROM LIKELIHOODS ----
-  compute_log_posterior <- function(p, pointwise = FALSE, print.pb = FALSE) {
+  ## FUNCTION TO CREATE THE SUBVECTOR OF PARAMETERS ----
+  split_parameters_vector <- function(p) {
     
-    # 1. Parameters for the calibration run
-    
-    # 1.1. Base model parameters
+    # 1. Base model parameters
     p_sigma <- p[1] # Standard deviation of residuals
     p_sigma_origins <- p[2] # SD of the origin effect
     p_sigma_sites <- p[3] # SD of the site effect
@@ -193,7 +185,10 @@ initialise_model <- function(mod_design,
     p_lad_sites <- p[(1:n_sites) + 3 + n_origins] # Site intercepts
     
     
-    # 1.2. Parameters depending on the model definition
+    #### ICI: voir pour moduler selon si random effects !
+    ### TIPS: mettre une variable start_species, start dbh...
+    
+    # 2. Parameters depending on the model definition
     if (mod_design$species_specific) {
       # species-specific intercept
       p_lad_species <- p[(1:n_species) + 3 + n_origins + n_sites]
@@ -248,38 +243,59 @@ initialise_model <- function(mod_design,
       p_lad_compet <- rep(0, n_species)
     } 
     
+    # List with all different group of parameters 
+    return(list(
+      "sigma" = p_sigma,
+      "sigma_origins" = p_sigma_origins,
+      "sigma_sites" = p_sigma_sites,
+      "origins" = p_lad_origins,
+      "sites" = p_lad_sites,
+      "species" = p_lad_species,
+      "dbh" = p_lad_dbh,
+      "compet" = p_lad_compet
+    ))
+  }
+  
+  
+  ## FUNCTION TO COMPUTE LOG POSTERIOR FROM LIKELIHOODS ----
+  compute_log_posterior <- function(p, pointwise = FALSE, print.pb = FALSE) {
+    
+    # 1. Parameters for the calibration run
+    p_list <- split_parameters_vector(p)
     
     
     # 2. Compute the residuals of the given lad parameters
     out_sl <- compute_pacl_residuals(data_sensors,
+                                     data_plots,
                                      data_calib, 
                                      data_rad, 
-                                     data_plots,
-                                     p_lad_sites,
-                                     p_lad_species,
-                                     p_lad_dbh,
-                                     p_lad_compet,
+                                     p_list$sites,
+                                     p_list$species,
+                                     p_list$dbh,
+                                     p_list$compet,
                                      print.pb)
     residuals <- out_sl$residuals
     
     
+    ## ICI : Compute log likelihood seleuement si random
+    
     # 3. Compute the log-likelihood of the origin random effect
-    log_likelihood_origins <- dnorm(p_lad_origins, mean = 0, sd = p_sigma_origins, log = TRUE)
+    log_likelihood_origins <- dnorm(p_list$origins, mean = 0, sd = p_list$sigma_origins, log = TRUE)
     
     
     
     # 4. Compute the log-likelihood of the hirerarchcal random site effect
     
       ## Get the associated origin mean for each site
-    p_lad_sites_meanOrigins <- p_lad_origins[site_origins_id]
+    p_lad_sites_meanOrigins <- p_list$origins[site_origins_id]
     
       ## Compute the hierarchical log-likelihood
-    log_likelihood_sites <- dnorm(p_lad_sites, mean = p_lad_sites_meanOrigins, sd = p_sigma_sites, log = TRUE)
+    log_likelihood_sites <- dnorm(p_list$sites, mean = p_lad_sites_meanOrigins, sd = p_list$sigma_sites, log = TRUE)
     
     
     
     # 5. Compute the data log-likelihood
-    log_likelihood_data <- dnorm(residuals, mean = 0, sd = p_sigma, log = TRUE) 
+    log_likelihood_data <- dnorm(residuals, mean = 0, sd = p_list$sigma, log = TRUE) 
     
     
     
@@ -292,7 +308,10 @@ initialise_model <- function(mod_design,
     # you want to assess how well the model predicts new observed data, not how well it fits the prior on latent variables.
 
     if (pointwise) {
-      return(log_likelihood_data)
+      return(list(
+        "residuals" = residuals,
+        "loglikelihood" = log_likelihood_data
+      ))
     }
     
     
@@ -409,6 +428,54 @@ initialise_model <- function(mod_design,
   
   # SCRIPT ----
   
+  ## Filter sensors ----
+  
+  # Remove sensors that did not converged
+  for (site_name in names(data_sensors)) {
+    
+    data_sensors[[site_name]] <- data_sensors[[site_name]] %>%
+      dplyr::left_join(
+        output_lad_method1,
+        by = c("plot" = "site", "id" = "id_sensor")
+      ) %>%
+      dplyr::filter(converged)
+    
+    data_calib[[site_name]]$sensors <- data_calib[[site_name]]$sensors %>%
+      dplyr::left_join(
+        output_lad_method1 %>% dplyr::filter(site == site_name),
+        by = "id_sensor"
+      ) %>%
+      dplyr::filter(converged)
+    
+  }
+  
+  message(
+    paste0(
+      sum(!output_lad_method1$converged), "/",
+      nrow(output_lad_method1), " sensors had been removed"
+    )
+  )
+  
+  
+  # Remove sites without sensors
+  sites_nosensors <- unlist(data_sensors %>% purrr::map(~nrow(.x) == 0))
+  data_sensors <- data_sensors[!sites_nosensors]
+  
+  message(
+    paste0(
+      sum(sites_nosensors), " sites had been removed : ",
+      paste(names(sites_nosensors)[sites_nosensors], collapse = ", ")
+    )
+  )
+  
+  # Filter data plots
+  data_plots <- data_plots %>% 
+    dplyr::filter(name %in% names(data_sensors))
+  
+  
+  
+  
+  
   ## Base variables ----
   origin_names <- unique(data_plots$origin)
   site_names <- data_plots$name
@@ -421,21 +488,43 @@ initialise_model <- function(mod_design,
   n_sites <- length(site_names)
   
   
-  ## Define parameters and priors ----
   
-  # BASE PARAMETERS
+  
+  
+  ## Define parameters and priors ----
   # HALFCAUCHY PRIORS MUST BE THE FIRST ONES (typically for modelling SD)
+  
+  # BASE PARAMETER
   par_names <- c(
-    "sigma", # model sigma SD
-    "sigma_origin", # SD of the random origin effect (hyperparameter)
-    "sigma_site", # SD of the random site effect (hyperparameter)
-    paste0("origin.", origin_names),
-    paste0("site.", site_names) # random sites intercept
+    "sigma" # model sigma SD
   )
   
-  prior_halfcauchy_S <- rep(5, times=3) # 3 SD parameters
-  prior_uniform_LB <- rep(-10, times=n_origins+n_sites) # site and origin random effects
-  prior_uniform_UB <- rep(10, times=n_origins+n_sites) # site and origin random effects
+  # RANDOM EFFECT
+  
+  ## SD of the random origin effect (hyperparameter)
+  if (mod_design$origin_rd_effect) {
+    par_names <- c(par_names, "sigma_origin")
+  }
+  
+  ## SD of the random site effect (hyperparameter)
+  if (mod_design$sites_rd_effect) {
+    par_names <- c(par_names, "sigma_site")
+  }
+  
+  ## Random origins intercept
+  if (mod_design$origin_rd_effect) {
+    par_names <- c(par_names, paste0("origin.", origin_names))
+  }
+  
+  ## Random sites intercept
+  if (mod_design$sites_rd_effect) {
+    par_names <- c(par_names, paste0("site.", site_names))
+  }
+  
+  prior_halfcauchy_S <- rep(5, times = 1 + sum(mod_design$origin_rd_effect, mod_design$sites_rd_effect)) # SD parameters
+  
+  prior_uniform_LB <- rep(-10, times = n_origins*mod_design$origin_rd_effect + n_sites * mod_design$sites_rd_effect) # site and origin random effects
+  prior_uniform_UB <- rep(10, n_origins*mod_design$origin_rd_effect + n_sites * mod_design$sites_rd_effect) # site and origin random effects
   
   
   
@@ -494,6 +583,8 @@ initialise_model <- function(mod_design,
   } # Otherwise, no competition effect
   
   
+  
+  
   ## Create priors ----
   prior <- createCombinedPriors(halfcauchy_scale = prior_halfcauchy_S,
                                 uniform_lower = prior_uniform_LB,
@@ -501,10 +592,14 @@ initialise_model <- function(mod_design,
   
   
   
+  
+  
   ## Bayesian setup ----
   bayesianSetup <- BayesianTools::createBayesianSetup(compute_log_posterior, 
                                                       prior, 
                                                       names = par_names)
+  
+  
   
   ## Return the environment ----
   return(rlang::current_env())
