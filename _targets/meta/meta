@@ -5,7 +5,6 @@ SEED|stem|a5405ff32868aa52|97bbbba232d78432|2c530c1562a7fbd1|350052512||t20376.4
 plot_infos_fp|stem|9f1daf85d12f7828|55107e44f65ca9b4|2c530c1562a7fbd1|1058822048|data/plot_infos.csv|t20361.5552561448s|s2199b|2199|file|local|vector|||0||
 init_db|stem|4beac3a682aaddfe|91145741294a7edc|a6f61fd5f2f6d6a2|-2136484936||t20376.4050380202s|s284413b|284413|rds|local|vector|||0.4||
 data_calib|stem|4e8dbbf9cb646575|cd01bbd039806451|413d3c64985d855e|794142540||t20376.4060342834s|s599193b|599193|rds|local|vector|||85.97|We added a 0.01m buffer around the core polygon because of difficulties of including some points.... We added a 0.01m buffer around the core polygon because of difficulties of including some points.... We added a 0.01m buffer around the core polygon because of difficulties of including some points.... We added a 0.01m buffer around the core polygon because of difficulties of including some points.... We added a 0.01m buffer around the core polygon because of difficulties of including some points.... We added a 0.01m buffer around the core polygon because of difficulties of including some points...|
-n_chains|stem|93ab4aa22d78af41|2eac0bc41fe1538f|2c530c1562a7fbd1|1902186402||t20376.4078628788s|s51b|51|rds|local|vector|||0||
 n_burning|stem|93ef336af509ac95|4845e990913b7429|2c530c1562a7fbd1|1542778852||t20376.4078645404s|s49b|49|rds|local|vector|||0||
 data_rad|stem|07b4bd92ae495693|78b49b62dfa8a771|7ce71abfb8df6185|-699444806||t20376.4118807892s|s719b|719|rds|local|vector|||0.05||
 thresholds_punobs|stem|1ba0a4a6cf14078f|e066701eb956c7dd|2c530c1562a7fbd1|1470141032||t20396.6496290935s|s59b|59|rds|local|vector|||2.54|le package 'ggplot2' a été compilé avec la version R 4.5.2|
@@ -19,30 +18,35 @@ get_sensors_residuals|function|7bc412aa376b190d
 compute_sensors_residuals|function|a11aa4883aedcae1
 output_res_method1|stem|f86009ffad4e2531|92912e447bcdf035|3b8980cc2a254a98|2001807919||t20397.6682873974s|s162664539b|162664539|rds|local|vector|||111.92||
 sensors2calib|stem|3e81f54153e67b26|725841c6821e8399|81139abef40558e5|-2124383852||t20397.71161713s|s24335b|24335|rds|local|vector|||0.14||
-exp_design|stem|62ee1b5757d05187|0bec87d79869afdb|53552807f5952349|-1766452664||t20397.7173915046s|s169b|169|rds|local|vector|||2.69|le package 'ggplot2' a été compilé avec la version R 4.5.2. le package 'e1071' a été compilé avec la version R 4.5.2|
 filter_sensors|function|090856b223bb0444
 filter_plots_from_sensors|function|37a3e6c82ae56a8a
 data_sensors_filtered|stem|3e81f54153e67b26|725841c6821e8399|81139abef40558e5|8501250||t20397.7247610148s|s24335b|24335|rds|local|vector|||0.14||
 data_plots_filtered|stem|ee2beaf23df333b1|56d0d4c45337a781|bf0b1fc5ac14765e|-524875119||t20397.7247619762s|s1314b|1314|rds|local|vector|||0||
 sensors2keep|stem||1c41fec1d362bfd7|65bb11fab11a14f2|1515870842||t20397.7365386856s||0|rds|local|vector|||0||impossible de trouver la fonction 'filter_sensors'
-models_setup|stem|85d15bbd98520441|138c3bf028dd41c8|febcbea90517acc9|-791921158||t20397.7375931191s|s2203027b|2203027|rds|local|vector|||0.43||
-n_iterations|stem|4c336e9f4625b915|f136acdda42ff3f0|2c530c1562a7fbd1|868853173||t20397.761829823s|s53b|53|rds|local|vector|||2.62|le package 'ggplot2' a été compilé avec la version R 4.5.2. le package 'e1071' a été compilé avec la version R 4.5.2|
-n_analysis|stem|e4578b43404a4bfd|5abcf88c2b5a7f41|2c530c1562a7fbd1|1515411651||t20397.7618304175s|s53b|53|rds|local|vector|||0||
-models_output|stem|3ca1c202fc1b6f7d|9dcc3e80de19be4e|64e346385c9c2463|1180655238||t20398.8470020421s|s2559641b|2559641|rds|local|vector|||93758.14||
-get_summary_pointwise_models|function|233db11434c6675b
+output_lad_method1|stem|01ded38980fe3904|e2bd7f61d0318d5f|2e4cba327604344a|1039143718||t20399.6137268976s|s57860b|57860|rds|local|vector|||107.97||
+n_analysis|stem|053e260b003209aa|c3cddfc9bb5b3f93|2c530c1562a7fbd1|1515411651||t20402.6081933752s|s53b|53|rds|local|vector|||0||
+n_chains|stem|5b51ac67c60457fe|bb375a30fa348382|2c530c1562a7fbd1|1902186402||t20404.3689976031s|s51b|51|rds|local|vector|||2.5|le package 'ggplot2' a été compilé avec la version R 4.5.2. le package 'e1071' a été compilé avec la version R 4.5.2|
+n_iterations|stem|3b407bbada8ac433|b106374aeb006b8c|2c530c1562a7fbd1|868853173||t20405.7838869285s|s53b|53|rds|local|vector|||2.53|le package 'ggplot2' a été compilé avec la version R 4.5.2. le package 'e1071' a été compilé avec la version R 4.5.2|
+models_setup|stem|0830633c6f3ded0d|138c3bf028dd41c8|52dff1792454572e|-791921158||t20406.5572307604s|s8772792b|8772792|rds|local|vector|||3.22||
+models_output|stem|bdd2d073ec989106|6bb6cbe0caa7d737|76fb3ce3c72a93ff|1180655238||t20406.5809049584s|s9370900b|9370900|rds|local|vector|||2044.14||
+n_posteriors_analysis|stem|16fa5541e324187f|283bbb5a254c0461|2c530c1562a7fbd1|-196317148||t20406.5925676906s|s51b|51|rds|local|vector|||2.5|le package 'ggplot2' a été compilé avec la version R 4.5.2. le package 'e1071' a été compilé avec la version R 4.5.2|
+models_summary_pointwise|stem|acba5ef7a2b63656|3d926da816a30953|d6a9e864bd0e9131|128290512||t20406.5948186128s|s471468b|471468|rds|local|vector|||193.64||
+models_comparison|stem|f400568c2ae7bee4|5a3838e4a18b1727|9395ad8e4b97c4cc|777145309||t20406.5948208546s|s1072b|1072|rds|local|vector|||0.1|29 (2.6%) p_waic estimates greater than 0.4. We recommend trying loo instead.. Not enough tail samples to fit the generalized Pareto distribution in some or all columns of matrix of log importance ratios. Skipping the following columns: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, ... [1111 more not printed]. . Some Pareto k diagnostic values are too high. See help('pareto-k-diagnostic') for details. .  10 (1.5%) p_waic estimates greater than 0.4. We recommend trying loo instead.. Not enough tail samples to fit the generalized Pareto distribution in some or all columns of matrix of log importance ratios. Skipping the following columns: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, ... [646 more not printed]. . Some Pareto k diagnostic values are too high. See help('pareto-k-diagnostic') for details. .  26 (4.0%) p_waic estimates greater than 0.4. We recommend trying loo instead.. Not enough tail samples to fit the generalized Pareto distribution in some or all columns of matrix of log importance ratios. Skipping the following columns: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, ... [646 more not printed]. . Some Pareto k diagnostic values are too high. See help('pareto-k-diagnostic') for details. .  76 (11.6%) p_waic estimates greater than 0.4. We recommend trying loo instead.. Not enough tail samples to fit the generalized Pareto distribution in some or all columns of matrix of log importance ratios. Skipping the following columns: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, ... [646 more not printed]. . Some Pareto k diagnostic values are too high. See help('pareto-k-diagnostic') for details. .  23 (3.5%) p_waic estimates greater than 0.4. We recommend trying loo instead.. Not enough tail samples to fit the generalized Pareto distribution in some or all columns of matrix of log importance ratios. Skipping the following columns: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, ... [646 more not printed]. . Some Pareto k diagnostic values are too high. See help('pareto-k-diagnostic') for details. .  38 (5.8%) p_waic estimates greater than 0.4. We recommend trying loo instead.. Not en|
+models_evaluation|stem|77efad5788e98ea2|a47985a3c1081f5c|43ade5b8496f548e|-199941792||t20406.594823752s|s279149b|279149|rds|local|vector|||0.2||
+get_summary_pointwise_models|function|b406adca3951fcac
 get_sensors_punobs|function|35b290db7a76c098
 get_radiation_dataset|function|98a969b81b839347
-create_experimental_design|function|81586da991722540
+create_experimental_design|function|8b2d4019ec850bc5
 get_sensors_pacl_sitespecificLAD|function|483404addc347a90
-calibrate_models|function|b94fe1c03e70b52b
-compare_models|function|bcee35dca5d5f114
-evaluate_models|function|c6a38d603f20b979
-initialise_model|function|784f45f14d321970
+calibrate_models|function|fcf066a69137b9d5
+compare_models|function|edc5d12af7ed7818
+evaluate_models|function|cf6382e7cdb5c96e
+initialise_model|function|bbad1f6e4deace7b
 plot_stand|function|bf7f498b2f845daa
 get_occurences_species2calib|function|91ff075b9f01e71e
 fit_lad_method1|function|3a37cfce19c87e2d
 load_database_from_rdata|function|6e223050f09f8b91
 compute_competition_trees|function|9c9058de60763dc4
-initialise_models|function|02f5e25fce6d9ddb
+initialise_models|function|f4793cf92a9bdfc1
 create_calibration_stands|function|1e6b8d6dd5a08d4b
-output_lad_method1|stem|01ded38980fe3904|e2bd7f61d0318d5f|2e4cba327604344a|1039143718||t20399.6137268976s|s57860b|57860|rds|local|vector|||107.97||
+exp_design|stem|efec388dbc936018|0bec87d79869afdb|e4c5b4ef59c7a83c|-1766452664||t20406.5973169575s|s449b|449|rds|local|vector|||2.8|le package 'ggplot2' a été compilé avec la version R 4.5.2. le package 'e1071' a été compilé avec la version R 4.5.2|

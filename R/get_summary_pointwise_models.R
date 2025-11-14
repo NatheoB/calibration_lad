@@ -1,6 +1,6 @@
 get_summary_pointwise_models <- function(models_setup,
-                                 models_output,
-                                 n_values) {
+                                         models_output,
+                                         n_values) {
   
   get_summary_pointwise_model <- function(output, n_values) {
     
@@ -21,7 +21,7 @@ get_summary_pointwise_models <- function(models_setup,
     for (i in 1:nrow(samples)) {
 
       # The important point here is the pointwise set to TRUE
-      matrices_list <- compute_log_posterior(samples[i,], pointwise = TRUE, print.pb = FALSE)
+      matrices_list <- compute_log_likelihood(samples[i,], pointwise = TRUE, print.pb = FALSE)
       
       out_residuals[i,] <- matrices_list$residuals
       out_llpointwise[i,] <- matrices_list$loglikelihood
@@ -38,19 +38,26 @@ get_summary_pointwise_models <- function(models_setup,
   
   
   # Compute the residuals of all the last samples of each model ----
-  n_mods <- length(models_setup)
-  models_matrices <- vector("list", n_mods)
+  
+  # Calibrate all the models ----
+  ids_simu <- names(models_setup)
+  n_mods <- length(ids_simu)
+  
+  models_matrices <- setNames(vector("list", n_mods), ids_simu)
   for (i in 1:n_mods) {
     
+    # Get the simu name
+    id_simu <- ids_simu[i]
+    
     # Print a message to follow the calibration process
-    message(paste0("Computing residuals and pointwise log-likelihood of model ", i, "/", n_mods, "..."))
+    message(paste0("Computing residuals and pointwise log-likelihood of model ", id_simu, " - ", i, "/", n_mods, "..."))
     
     # Set the model environment
-    environment(get_summary_pointwise_model) <- models_setup[[i]]
+    environment(get_summary_pointwise_model) <- models_setup[[id_simu]]
     
     # Get the model residuals and pointwise log-likelihood matrices
-    models_matrices[[i]] <- get_summary_pointwise_model(models_output[[i]]$outputs,
-                                                        n_values)
+    models_matrices[[id_simu]] <- get_summary_pointwise_model(models_output[[id_simu]]$outputs,
+                                                              n_values)
   }
   
   # Return the list of models' summary matrices ----

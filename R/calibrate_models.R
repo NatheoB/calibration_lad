@@ -5,7 +5,17 @@ calibrate_models <- function(models_setup,
                              sampling_algo) {
   
   # Function to calibrate a model given the environment is set up ----
-  calibrate_model <- function(settings, sampling_algo) {
+  calibrate_model <- function(sampling_algo) {
+    
+    # Define settings ----
+    settings <- list(iterations = mod_design$n_iterations, 
+                     nrChains = mod_design$n_chains,
+                     burnin = 0, 
+                     gamma = NULL, eps = 0, e = 0.05, 
+                     pCRupdate = TRUE, updateInterval = 50, thin = 1, 
+                     adaptation = 0.2, parallel = NULL, Z = NULL, ZupdateFrequency = 10, 
+                     pSnooker = 0.3, DEpairs = 2, consoleUpdates = 1, startValue = NULL, 
+                     message = TRUE)
     
     # Run Bayesian calibration ----
     t_start <- Sys.time()
@@ -28,28 +38,24 @@ calibrate_models <- function(models_setup,
   }
   
   
-  # Define settings ----
-  settings <- list(iterations = n_iterations, burnin = n_burning, nrChains = n_chains,
-                   gamma = NULL, eps = 0, e = 0.05, 
-                   pCRupdate = TRUE, updateInterval = 50, thin = 1, 
-                   adaptation = 0.2, parallel = NULL, Z = NULL, ZupdateFrequency = 10, 
-                   pSnooker = 0.3, DEpairs = 2, consoleUpdates = 100, startValue = NULL, 
-                   message = TRUE)
-  
-  
   # Calibrate all the models ----
-  n_mods <- length(models_setup)
-  models_output <- vector("list", n_mods)
+  ids_simu <- names(models_setup)
+  n_mods <- length(ids_simu)
+  
+  models_output <- setNames(vector("list", n_mods), ids_simu)
   for (i in 1:n_mods) {
     
+    # Get the simu name
+    id_simu <- ids_simu[i]
+    
     # Print a message to follow the calibration process
-    message(paste0("Calibrating model ", i, "/", n_mods, "..."))
+    message(paste0("Calibrating model ", id_simu, " - ", i, "/", n_mods, "..."))
     
     # Set the model environment
-    environment(calibrate_model) <- models_setup[[i]]
+    environment(calibrate_model) <- models_setup[[id_simu]]
     
     # Run the model
-    models_output[[i]] <- calibrate_model(settings, sampling_algo)
+    models_output[[id_simu]] <- calibrate_model(sampling_algo)
   }
   
   

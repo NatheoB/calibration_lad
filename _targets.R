@@ -24,15 +24,8 @@ tar_option_set(packages = c("dplyr", "tidyr", "data.table",
 list(
   
   # PARAMETERS ----
-  
-  ## Global parameters ----
   tar_target(SEED, 5030),
-  
-  ## Calibration parameters ----
-  tar_target(n_chains, 3),
-  tar_target(n_iterations, 50000),
-  tar_target(n_burning, 0),
-  tar_target(n_analysis, 9000),
+  tar_target(n_posteriors_analysis, 1000),
   
   
   
@@ -82,16 +75,16 @@ list(
   
   ## METHOD 2: Bayesian calibration ----
   
-  ## Get the species to calibrate ----
+  ### Get the species to calibrate ----
   tar_target(sp_calib_occ, get_occurences_species2calib(init_db)),
   tar_target(species2calib, as.character(unique(sp_calib_occ$species))),
   
   
-  ## Create the experimental design ----
+  ### Create the experimental design ----
   tar_target(exp_design, create_experimental_design()),
 
 
-  ## Initialise the Bayesian setups ----
+  ### Initialise the Bayesian setups ----
   # 465/1121 sensors had been removed
   # 3 sites had been removed : Cloture11, Cloture15, Cloture2
   tar_target(models_setup, initialise_models(exp_design,
@@ -103,29 +96,26 @@ list(
                                              species2calib)),
 
 
-  ## Run the MCMC ----
-  tar_target(models_output, calibrate_models(models_setup$setups,
-                                             n_chains,
-                                             n_iterations,
-                                             n_burning,
+  ### Run the MCMC ----
+  tar_target(models_output, calibrate_models(models_setup,
                                              sampling_algo = "DREAMzs")),
 
 
-  # # COMPARE AND EVALUATE THE MODELS ----
-  # 
-  # ## Get pointwise matrices (log-likelihood and residuals) ----
-  # tar_target(models_summary_pointwise, get_summary_pointwise_models(models_setup$setups,
-  #                                                                   models_output,
-  #                                                                   n_analysis)),
-  
-  
+  # COMPARE AND EVALUATE THE MODELS ----
+
+  ## Get pointwise matrices (log-likelihood and residuals) ----
+  tar_target(models_summary_pointwise, get_summary_pointwise_models(models_setup,
+                                                                    models_output,
+                                                                    n_posteriors_analysis)),
+
+
   ## Compare models with LOO-CV and WAIC ----
-  # tar_target(models_comparison, compare_models(models_summary_pointwise)),
-  # 
-  
+  tar_target(models_comparison, compare_models(models_summary_pointwise)),
+
+
   ## Evaluate models with RMSE ----
-  # tar_target(models_evaluation, evaluate_models(models_summary_pointwise)),
+  tar_target(models_evaluation, evaluate_models(models_summary_pointwise)),
   
   
   NULL
-  )
+)

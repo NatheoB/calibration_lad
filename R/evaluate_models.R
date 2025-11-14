@@ -1,11 +1,29 @@
-evaluate_models <- function(models_residuals) {
+evaluate_models <- function(models_summary_pointwise) {
   
-  # models_residuals %>% 
-  #   as.data.frame() %>% 
-  #   tidyr::pivot_longer(everything(),
-  #                       names_to = "observation",
-  #                       values_to = "res") %>% 
-  #   dplyr::mutate(observation = as.numeric(gsub("X", "", observation)))
-    
+  data_residuals <- models_summary_pointwise %>%
+    purrr::map(
+      ~.x$residuals %>% 
+        as.data.frame() %>% 
+        dplyr::mutate(iteration = row_number()) %>%
+        tidyr::pivot_longer(!iteration,
+                            names_to = "id_sensor",
+                            values_to = "residuals",
+                            names_prefix = "V",
+                            names_transform = as.numeric)
+    )
   
+  evaluation_indicators <- data_residuals %>% 
+    purrr::map(
+       ~.x %>% 
+        dplyr::group_by(iteration) %>% 
+        dplyr::summarise(
+          MAE = mean(abs(residuals)),
+          RMSE = sqrt(mean(residuals^2))
+        )
+    )
+  
+  return(list(
+    "residuals" = data_residuals,
+    "indicators" = evaluation_indicators
+  ))
 }

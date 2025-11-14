@@ -21,6 +21,7 @@ library(dplyr)
 library(ggplot2)
 library(ggforce)
 library(BayesianTools)
+library(coda)
 ```
 
 # Motivation of the study
@@ -228,7 +229,7 @@ for (site in site_names[grepl("Baileux", site_names)]) {
 }
 ```
 
-# Preliminary analysis
+# Preliminary analysis (filter the sensors)
 
 ```{r}
 tar_load(lads_method1)
@@ -330,7 +331,7 @@ ggplot(data = output_lad_method1,
 The mean LAD over all sensors that converged was about `r round(mean(output_lad_method1$best_lad[output_lad_method1$converged]), 3)`
 
 
-# A simple Bayesian approach
+# Observe the effect of sensors filtering
 
 A first Bayesian approach would be to also fit a mean LAD value on the sensors that converged with the previous method, by considering a hierarchical random effect (site into origin, mandatory according to the structure our our dataset).
 
@@ -338,9 +339,25 @@ The model can be written as:
 $LAD_{p} = a_{0} + a_{0,p} + \epsilon$, where $a_{0}$ is the LAD intercept and $a_{0,p}$ is a random hierarchical site effect, nested within an origin effect (4 origins of the plots within UCLouvain, INRAe, Cloture and IRRES).
 
 
+
+
+# A simple Bayesian model (species and DBH effect)
+
 ```{r}
 tar_load(models_setup)
 tar_load(models_output)
+tar_load(models_summary_pointwise)
+tar_load(models_comparison)
+tar_load(models_evaluation)
+
+# out_list <- list(
+#   "setup" = models_setup,
+#   "output" = models_output,
+#   "pointwise" = models_summary_pointwise,
+#   "comparison" = models_comparison,
+#   "evaluation" = models_evaluation
+# )
+# saveRDS(out_list, "output/calib/out_20251114_testRandom_5000it_1c.Rdata")
 ```
 
 ```{r}
@@ -348,9 +365,15 @@ models_setup$exp_design
 ```
 
 ```{r}
-out <- models_output[[1]]
+burning_period <- 667
+thinning <- 5
 
-setup <- models_setup$setups[[1]]
+mod_id <- 2
+out <- models_output[[mod_id]]
+out$outputs <- list(out$outputs)
+
+setup <- models_setup$setups[[mod_id]]
+
 n_species <- setup$n_species
 n_sites <- setup$n_sites
 n_origins <- setup$n_origins
@@ -367,10 +390,42 @@ print(out$computation_time)
 
 ## Intercept effect
 
+### Trace
+
+```{r}
+out$outputs %>%
+  purrr::map(
+    ~getSample(.x, 
+               start = 0, end = NULL, thin = 1,
+               # start = burning_period, end = NULL, thin = thinning,
+               whichParameters = which(colnames(
+                 out$outputs[[1]]$chain[[1]]) == "intercept"),
+               coda = TRUE) %>%
+      purrr::map(~as.data.frame(.x) %>%
+                   dplyr::mutate(iteration = row_number()) %>%
+                   dplyr::relocate(iteration)) %>%
+      dplyr::bind_rows(.id = "subchain") %>%
+      tidyr::pivot_longer(cols = !c(subchain, iteration),
+                          names_to = "param", values_to = "estimate")
+  ) %>%
+  dplyr::bind_rows(.id = "chain") %>%
+
+  ggplot(aes(y = estimate, x = iteration,
+             color = chain, linetype = subchain)) +
+  geom_line() +
+  geom_vline(xintercept = burning_period, linetype = "dashed") +
+  theme_bw()
+```
+
+
+
+### Density
+
 ```{r}
 intercept_samples <- out$outputs %>%
   purrr::map(
-    ~getSample(.x, start = 10000, end = NULL, thin = 5,
+    ~getSample(.x, 
+               start = burning_period, end = NULL, thin = thinning,
                whichParameters = which(colnames(
                  out$outputs[[1]]$chain[[1]]) == "intercept"),
                coda = TRUE) %>%
@@ -382,22 +437,7 @@ intercept_samples <- out$outputs %>%
                           names_to = "param", values_to = "estimate")
   ) %>%
   dplyr::bind_rows(.id = "chain")
-```
 
-### Trace
-
-```{r}
-intercept_samples %>%
-
-  ggplot(aes(y = estimate, x = iteration,
-             color = chain, linetype = subchain)) +
-  geom_line() +
-  theme_bw()
-```
-
-### Density
-
-```{r}
 summaries_intercept <- intercept_samples %>% 
   dplyr::summarise(
     lower = quantile(estimate, probs = 0.025),
@@ -419,211 +459,342 @@ intercept_samples %>%
   geom_vline(data = summaries_intercept, aes(xintercept = median),
              linewidth = 1.05, color = "salmon") +
   geom_vline(data = summaries_intercept, aes(xintercept = upper),
+             linewidth = 1.05, color = "salmon", linetype = "dotted")
+```
+
+
+## DBH effect
+
+### Trace
+
+```{r}
+out$outputs %>%
+  purrr::map(
+    ~getSample(.x, 
+               start = 0, end = NULL, thin = 1,
+               # start = burning_period, end = NULL, thin = thinning,
+               whichParameters = which(colnames(
+                 out$outputs[[1]]$chain[[1]]) == "dbh"),
+               coda = TRUE) %>%
+      purrr::map(~as.data.frame(.x) %>%
+                   dplyr::mutate(iteration = row_number()) %>%
+                   dplyr::relocate(iteration)) %>%
+      dplyr::bind_rows(.id = "subchain") %>%
+      tidyr::pivot_longer(cols = !c(subchain, iteration),
+                          names_to = "param", values_to = "estimate")
+  ) %>%
+  dplyr::bind_rows(.id = "chain") %>%
+
+  ggplot(aes(y = estimate, x = iteration,
+             color = chain, linetype = subchain)) +
+  geom_line() +
+  geom_vline(xintercept = burning_period, linetype = "dashed") +
+  theme_bw()
+```
+
+
+
+### Density
+
+```{r}
+dbh_samples <- out$outputs %>%
+  purrr::map(
+    ~getSample(.x, 
+               start = burning_period, end = NULL, thin = thinning,
+               whichParameters = which(colnames(
+                 out$outputs[[1]]$chain[[1]]) == "dbh"),
+               coda = TRUE) %>%
+      purrr::map(~as.data.frame(.x) %>%
+                   dplyr::mutate(iteration = row_number()) %>%
+                   dplyr::relocate(iteration)) %>%
+      dplyr::bind_rows(.id = "subchain") %>%
+      tidyr::pivot_longer(cols = !c(subchain, iteration),
+                          names_to = "param", values_to = "estimate")
+  ) %>%
+  dplyr::bind_rows(.id = "chain")
+
+summaries_dbh <- dbh_samples %>% 
+  dplyr::summarise(
+    lower = quantile(estimate, probs = 0.025),
+    median = quantile(estimate, probs = 0.5),
+    upper = quantile(estimate, probs = 0.975)
+  ) %>%
+  dplyr::arrange(median) %>%
+  as.data.frame()
+
+summaries_dbh
+
+dbh_samples %>%
+
+  ggplot(aes(x = estimate)) +
+  geom_density() +
+  theme_bw() +
+  geom_vline(data = summaries_dbh, 
+             aes(xintercept = lower),
+             linewidth = 1.05, color = "salmon", linetype = "dotted") +
+  geom_vline(data = summaries_dbh, 
+             aes(xintercept = median),
+             linewidth = 1.05, color = "salmon") +
+  geom_vline(data = summaries_dbh, 
+             aes(xintercept = upper),
              linewidth = 1.05, color = "salmon", linetype = "dotted") +
   geom_vline(xintercept = 0, linetype = "dashed")
 ```
 
 
+## Species-specific intercept effect
+
+### Trace
+
+```{r}
+out$outputs %>%
+  purrr::map(
+    ~getSample(.x, 
+               start = 0, end = NULL, thin = 1,
+               # start = burning_period, end = NULL, thin = thinning,
+               whichParameters = grep(
+                 "species",
+                 colnames(out$outputs[[1]]$chain[[1]])),
+               coda = TRUE) %>%
+      purrr::map(~as.data.frame(.x) %>%
+                   dplyr::mutate(iteration = row_number()) %>%
+                   dplyr::relocate(iteration)) %>%
+      dplyr::bind_rows(.id = "subchain") %>%
+      tidyr::pivot_longer(cols = !c(subchain, iteration),
+                          names_to = "species", values_to = "estimate",
+                          names_prefix = "species.")
+  ) %>%
+  dplyr::bind_rows(.id = "chain") %>%
+  
+  ggplot(aes(y = estimate, x = iteration,
+             color = chain, linetype = subchain)) +
+  geom_line() +
+  facet_wrap(~species) +
+  geom_vline(xintercept = burning_period, linetype = "dashed") +
+  theme_bw()
+```
+
+
+### Density
+
+#### LOG predictions
+
+```{r}
+species_sample <- out$outputs %>%
+  purrr::map(
+    ~getSample(.x, start = burning_period, end = NULL, thin = thinning,
+               whichParameters = grep(
+                 "species",
+                 colnames(out$outputs[[1]]$chain[[1]])),
+               coda = TRUE) %>%
+      purrr::map(~as.data.frame(.x) %>%
+                   dplyr::mutate(iteration = row_number()) %>%
+                   dplyr::relocate(iteration)) %>%
+      dplyr::bind_rows(.id = "subchain") %>%
+      tidyr::pivot_longer(cols = !c(subchain, iteration),
+                          names_to = "species", values_to = "estimate",
+                          names_prefix = "species.")
+  ) %>%
+  dplyr::bind_rows(.id = "chain")
+
+summaries_sp <- species_sample %>%
+  dplyr::group_by(species) %>%
+  dplyr::summarise(
+    lower = quantile(estimate, probs = 0.025),
+    median = quantile(estimate, probs = 0.5),
+    upper = quantile(estimate, probs = 0.975)
+  ) %>%
+  dplyr::arrange(median) %>%
+  as.data.frame()
+
+summaries_sp
+
+species_sample %>%
+  ggplot(aes(x = estimate)) +
+  geom_density() +
+  facet_wrap(~species, scales = "free_y") +
+  theme_bw() +
+  geom_vline(data = summaries_sp, aes(xintercept = lower),
+             linewidth = 1.05, color = "salmon", linetype = "dotted") +
+  geom_vline(data = summaries_sp, aes(xintercept = median),
+             linewidth = 1.05, color = "salmon") +
+  geom_vline(data = summaries_sp, aes(xintercept = upper),
+             linewidth = 1.05, color = "salmon", linetype = "dotted")
+```
+
+
+#### unLOG predictions
+
+```{r}
+species_sample_unlog <- out$outputs %>%
+  purrr::map(
+    ~getSample(.x, start = burning_period, end = NULL, thin = thinning,
+               whichParameters = grep(
+                 "species",
+                 colnames(out$outputs[[1]]$chain[[1]])),
+               coda = TRUE) %>%
+      purrr::map(~as.data.frame(.x) %>%
+                   dplyr::mutate(iteration = row_number()) %>%
+                   dplyr::relocate(iteration)) %>%
+      dplyr::bind_rows(.id = "subchain") %>%
+      tidyr::pivot_longer(cols = !c(subchain, iteration),
+                          names_to = "species", values_to = "estimate",
+                          names_prefix = "species.")
+  ) %>%
+  dplyr::bind_rows(.id = "chain") %>% 
+  dplyr::mutate(estimate = exp(estimate))
+
+summaries_sp_unlog <- species_sample_unlog %>%
+  dplyr::group_by(species) %>%
+  dplyr::summarise(
+    lower = quantile(estimate, probs = 0.025),
+    median = quantile(estimate, probs = 0.5),
+    upper = quantile(estimate, probs = 0.975)
+  ) %>%
+  dplyr::arrange(median) %>%
+  as.data.frame()
+
+summaries_sp_unlog
+
+species_sample_unlog %>%
+  ggplot(aes(x = estimate)) +
+  geom_density() +
+  facet_wrap(~species, scales = "free_y") +
+  theme_bw() +
+  geom_vline(data = summaries_sp_unlog, aes(xintercept = lower),
+             linewidth = 1.05, color = "salmon", linetype = "dotted") +
+  geom_vline(data = summaries_sp_unlog, aes(xintercept = median),
+             linewidth = 1.05, color = "salmon") +
+  geom_vline(data = summaries_sp_unlog, aes(xintercept = upper),
+             linewidth = 1.05, color = "salmon", linetype = "dotted")
+```
+
+
+
+## Species-specific dbh effect
+
+### Trace
+
+```{r}
+out$outputs %>%
+  purrr::map(
+    ~getSample(.x, 
+               start = 0, end = NULL, thin = 1,
+               # start = burning_period, end = NULL, thin = thinning,
+               whichParameters = grep(
+                 "dbh.",
+                 colnames(out$outputs[[1]]$chain[[1]])
+               ),
+               coda = TRUE) %>%
+      purrr::map(~as.data.frame(.x) %>%
+                   dplyr::mutate(iteration = row_number()) %>%
+                   dplyr::relocate(iteration)) %>%
+      dplyr::bind_rows(.id = "subchain") %>%
+      tidyr::pivot_longer(cols = !c(subchain, iteration),
+                          names_to = "species", values_to = "estimate",
+                          names_prefix = "dbh.")
+  ) %>%
+  dplyr::bind_rows(.id = "chain") %>%
+  
+  ggplot(aes(y = estimate, x = iteration,
+             color = chain, linetype = subchain)) +
+  geom_line() +
+  facet_wrap(~species) +
+  geom_vline(xintercept = burning_period, linetype = "dashed") +
+  theme_bw()
+```
+
+
+### Density
+
+```{r}
+species_sample <- out$outputs %>%
+  purrr::map(
+    ~getSample(.x, start = burning_period, end = NULL, thin = thinning,
+               whichParameters = grep(
+                 "dbh.",
+                 colnames(out$outputs[[1]]$chain[[1]])),
+               coda = TRUE) %>%
+      purrr::map(~as.data.frame(.x) %>%
+                   dplyr::mutate(iteration = row_number()) %>%
+                   dplyr::relocate(iteration)) %>%
+      dplyr::bind_rows(.id = "subchain") %>%
+      tidyr::pivot_longer(cols = !c(subchain, iteration),
+                          names_to = "species", values_to = "estimate",
+                          names_prefix = "dbh.")
+  ) %>%
+  dplyr::bind_rows(.id = "chain")
+
+summaries_sp <- species_sample %>%
+  dplyr::group_by(species) %>%
+  dplyr::summarise(
+    lower = quantile(estimate, probs = 0.025),
+    median = quantile(estimate, probs = 0.5),
+    upper = quantile(estimate, probs = 0.975)
+  ) %>%
+  dplyr::arrange(median) %>%
+  as.data.frame()
+
+summaries_sp
+
+species_sample %>%
+  ggplot(aes(x = estimate)) +
+  geom_density() +
+  facet_wrap(~species, scales = "free_y") +
+  theme_bw() +
+  geom_vline(data = summaries_sp, aes(xintercept = lower),
+             linewidth = 1.05, color = "salmon", linetype = "dotted") +
+  geom_vline(data = summaries_sp, aes(xintercept = median),
+             linewidth = 1.05, color = "salmon") +
+  geom_vline(data = summaries_sp, aes(xintercept = upper),
+             linewidth = 1.05, color = "salmon", linetype = "dotted") +
+  geom_vline(xintercept = 0, linetype = "dashed")
+```
+
+
+# Diagnostic
+
+```{r}
+out$outputs %>%
+  purrr::map(
+    ~gelmanDiagnostics(.x)
+  )
+```
+
+
+# Compare models
+
+```{r}
+data_looic <- models_comparison %>% 
+  purrr::map(
+    function(x) {
+      out <- x$LOOCV["looic",]
+      str <- paste0(round(out[["Estimate"]], 2), 
+                    " (SE ",
+                    round(out[["SE"]], 2),
+                    ")")
+      data.frame(looic = str)
+    }
+  ) %>% 
+  dplyr::bind_rows(.id = "id_mod")
+
+data_looic
+```
+
+
+```{r}
+models_evaluation$indicators %>% 
+  dplyr::bind_rows(.id = "id_mod") %>% 
+  dplyr::left_join(data_looic, by = "id_mod") %>% 
+  dplyr::mutate(mod_label = paste0(id_mod, " | ", looic)) %>% 
+  
+  ggplot(aes(x = MAE, color = mod_label)) +
+  geom_density() +
+  theme_bw() +
+  labs(color = "Model | LOOIC")
+  # theme(legend.position = "top")
+```
 
-<!-- ## Species effect -->
-
-<!-- ```{r} -->
-
-<!-- species_sample <- out$outputs %>%  -->
-
-<!--   purrr::map( -->
-
-<!--     ~getSample(.x, start = 10000, end = NULL, thin = 1, -->
-
-<!--                whichParameters = (1:n_species) + 3 + n_sites + n_origins, -->
-
-<!--                coda = TRUE) %>% -->
-
-<!--       purrr::map(~as.data.frame(.x) %>%  -->
-
-<!--                    dplyr::mutate(iteration = row_number()) %>%  -->
-
-<!--                    dplyr::relocate(iteration)) %>% -->
-
-<!--       dplyr::bind_rows(.id = "subchain") %>%  -->
-
-<!--       tidyr::pivot_longer(cols = !c(subchain, iteration), -->
-
-<!--                           names_to = "species", values_to = "estimate", -->
-
-<!--                           names_prefix = "species.") -->
-
-<!--   ) %>%  -->
-
-<!--   dplyr::bind_rows(.id = "chain") -->
-
-<!-- ``` -->
-
-<!-- ### Trace -->
-
-<!-- ```{r} -->
-
-<!-- species_sample %>%  -->
-
-<!--   ggplot(aes(y = estimate, x = iteration,  -->
-
-<!--              color = chain, linetype = subchain)) + -->
-
-<!--   geom_line() + -->
-
-<!--   facet_wrap(~species) + -->
-
-<!--   theme_bw() -->
-
-<!-- ``` -->
-
-<!-- ### Density -->
-
-<!-- ```{r} -->
-
-<!-- summaries_sp <- species_sample %>% -->
-
-<!--   dplyr::group_by(species) %>% -->
-
-<!--   dplyr::summarise( -->
-
-<!--     lower = quantile(estimate, probs = 0.025), -->
-
-<!--     median = quantile(estimate, probs = 0.5), -->
-
-<!--     upper = quantile(estimate, probs = 0.975) -->
-
-<!--   ) %>% -->
-
-<!--   dplyr::arrange(median) %>% -->
-
-<!--   as.data.frame() -->
-
-<!-- summaries_sp -->
-
-<!-- species_sample %>% -->
-
-<!--   ggplot(aes(x = estimate)) + -->
-
-<!--   geom_density() + -->
-
-<!--   facet_wrap(~species, scales = "free_y") + -->
-
-<!--   theme_bw() + -->
-
-<!--   geom_vline(data = summaries_sp, aes(xintercept = lower), -->
-
-<!--              linewidth = 1.05, color = "salmon", linetype = "dotted") + -->
-
-<!--   geom_vline(data = summaries_sp, aes(xintercept = median), -->
-
-<!--              linewidth = 1.05, color = "salmon") + -->
-
-<!--   geom_vline(data = summaries_sp, aes(xintercept = upper), -->
-
-<!--              linewidth = 1.05, color = "salmon", linetype = "dotted") -->
-
-<!-- ``` -->
-
-<!-- ## DBH effect -->
-
-<!-- ```{r} -->
-
-<!-- dbh_samples <- out$outputs %>%  -->
-
-<!--   purrr::map( -->
-
-<!--     ~getSample(.x, start = 10000, end = NULL, thin = 1, -->
-
-<!--                whichParameters = (1:n_species) + 3 + n_sites + n_origins + n_species, -->
-
-<!--                coda = TRUE) %>% -->
-
-<!--       purrr::map(~as.data.frame(.x) %>%  -->
-
-<!--                    dplyr::mutate(iteration = row_number()) %>%  -->
-
-<!--                    dplyr::relocate(iteration)) %>% -->
-
-<!--       dplyr::bind_rows(.id = "subchain") %>%  -->
-
-<!--       tidyr::pivot_longer(cols = !c(subchain, iteration), -->
-
-<!--                           names_to = "species", values_to = "estimate", -->
-
-<!--                           names_prefix = "species.") -->
-
-<!--   ) %>%  -->
-
-<!--   dplyr::bind_rows(.id = "chain") -->
-
-<!-- ``` -->
-
-<!-- ### Trace -->
-
-<!-- ```{r} -->
-
-<!-- dbh_samples %>%  -->
-
-<!--   ggplot(aes(y = estimate, x = iteration,  -->
-
-<!--              color = chain, linetype = subchain)) + -->
-
-<!--   geom_line() + -->
-
-<!--   facet_wrap(~species) + -->
-
-<!--   theme_bw() -->
-
-<!-- ``` -->
-
-<!-- ### Density -->
-
-<!-- ```{r} -->
-
-<!-- summaries_dbh <- dbh_samples %>% -->
-
-<!--   dplyr::group_by(species) %>% -->
-
-<!--   dplyr::summarise( -->
-
-<!--     lower = quantile(estimate, probs = 0.025), -->
-
-<!--     median = quantile(estimate, probs = 0.5), -->
-
-<!--     upper = quantile(estimate, probs = 0.975) -->
-
-<!--   ) %>% -->
-
-<!--   dplyr::arrange(median) %>% -->
-
-<!--   as.data.frame() -->
-
-<!-- dbh_samples %>% -->
-
-<!--   ggplot(aes(x = estimate)) + -->
-
-<!--   geom_density() + -->
-
-<!--   facet_wrap(~species, scales = "free_y") + -->
-
-<!--   theme_bw() + -->
-
-<!--   geom_vline(data = summaries_dbh, aes(xintercept = lower), -->
-
-<!--              linewidth = 1.05, color = "salmon", linetype = "dotted") + -->
-
-<!--   geom_vline(data = summaries_dbh, aes(xintercept = median), -->
-
-<!--              linewidth = 1.05, color = "salmon") + -->
-
-<!--   geom_vline(data = summaries_dbh, aes(xintercept = upper), -->
-
-<!--              linewidth = 1.05, color = "salmon", linetype = "dotted") + -->
-
-<!--   geom_vline(xintercept = 0, linetype = "dashed") -->
-
-<!-- ``` -->
 
 <!-- ## Competition effect -->
 
@@ -729,163 +900,163 @@ intercept_samples %>%
 
 
 
-## Site and origin effects
+<!-- ## Site and origin effects -->
 
-```{r}
-random_samples <- out$outputs %>%
-  purrr::map(
-    ~getSample(.x, start = 8000, end = NULL, thin = 1,
-               whichParameters = 1:(n_sites+n_origins) + 3,
-               coda = TRUE) %>%
-      purrr::map(~as.data.frame(.x) %>%
-                   dplyr::mutate(iteration = row_number()) %>%
-                   dplyr::relocate(iteration)) %>%
-      dplyr::bind_rows(.id = "subchain") %>%
-      tidyr::pivot_longer(cols = !c(subchain, iteration),
-                          names_to = "param", values_to = "estimate") %>%
-      tidyr::separate(param, c("param", "modality"), sep = "\\.")
-  ) %>%
-  dplyr::bind_rows(.id = "chain")
-```
+<!-- ```{r} -->
+<!-- random_samples <- out$outputs %>% -->
+<!--   purrr::map( -->
+<!--     ~getSample(.x, start = 8000, end = NULL, thin = 1, -->
+<!--                whichParameters = 1:(n_sites+n_origins) + 3, -->
+<!--                coda = TRUE) %>% -->
+<!--       purrr::map(~as.data.frame(.x) %>% -->
+<!--                    dplyr::mutate(iteration = row_number()) %>% -->
+<!--                    dplyr::relocate(iteration)) %>% -->
+<!--       dplyr::bind_rows(.id = "subchain") %>% -->
+<!--       tidyr::pivot_longer(cols = !c(subchain, iteration), -->
+<!--                           names_to = "param", values_to = "estimate") %>% -->
+<!--       tidyr::separate(param, c("param", "modality"), sep = "\\.") -->
+<!--   ) %>% -->
+<!--   dplyr::bind_rows(.id = "chain") -->
+<!-- ``` -->
 
-### Trace - origins
+<!-- ### Trace - origins -->
 
-```{r}
-random_samples %>%
-  dplyr::filter(param == "origin") %>%
+<!-- ```{r} -->
+<!-- random_samples %>% -->
+<!--   dplyr::filter(param == "origin") %>% -->
 
-  ggplot(aes(y = estimate, x = iteration,
-             color = chain, linetype = subchain)) +
-  geom_line() +
-  facet_wrap(~modality) +
-  theme_bw()
-```
+<!--   ggplot(aes(y = estimate, x = iteration, -->
+<!--              color = chain, linetype = subchain)) + -->
+<!--   geom_line() + -->
+<!--   facet_wrap(~modality) + -->
+<!--   theme_bw() -->
+<!-- ``` -->
 
-### Density - origins
+<!-- ### Density - origins -->
 
-```{r}
-summaries_origins <- random_samples %>%
-  dplyr::filter(param == "origin") %>%
-  dplyr::group_by(modality) %>%
-  dplyr::summarise(
-    lower = quantile(estimate, probs = 0.025),
-    median = quantile(estimate, probs = 0.5),
-    upper = quantile(estimate, probs = 0.975)
-  ) %>%
-  dplyr::arrange(median) %>%
-  as.data.frame()
+<!-- ```{r} -->
+<!-- summaries_origins <- random_samples %>% -->
+<!--   dplyr::filter(param == "origin") %>% -->
+<!--   dplyr::group_by(modality) %>% -->
+<!--   dplyr::summarise( -->
+<!--     lower = quantile(estimate, probs = 0.025), -->
+<!--     median = quantile(estimate, probs = 0.5), -->
+<!--     upper = quantile(estimate, probs = 0.975) -->
+<!--   ) %>% -->
+<!--   dplyr::arrange(median) %>% -->
+<!--   as.data.frame() -->
 
-random_samples %>%
-  dplyr::filter(param == "origin") %>%
+<!-- random_samples %>% -->
+<!--   dplyr::filter(param == "origin") %>% -->
 
-  ggplot(aes(x = estimate)) +
-  geom_density() +
-  facet_wrap(~modality, scales = "free_y") +
-  theme_bw() +
-  geom_vline(data = summaries_origins, aes(xintercept = lower),
-             linewidth = 1.05, color = "salmon", linetype = "dotted") +
-  geom_vline(data = summaries_origins, aes(xintercept = median),
-             linewidth = 1.05, color = "salmon") +
-  geom_vline(data = summaries_origins, aes(xintercept = upper),
-             linewidth = 1.05, color = "salmon", linetype = "dotted") +
-  geom_vline(xintercept = 0, linetype = "dashed")
-```
+<!--   ggplot(aes(x = estimate)) + -->
+<!--   geom_density() + -->
+<!--   facet_wrap(~modality, scales = "free_y") + -->
+<!--   theme_bw() + -->
+<!--   geom_vline(data = summaries_origins, aes(xintercept = lower), -->
+<!--              linewidth = 1.05, color = "salmon", linetype = "dotted") + -->
+<!--   geom_vline(data = summaries_origins, aes(xintercept = median), -->
+<!--              linewidth = 1.05, color = "salmon") + -->
+<!--   geom_vline(data = summaries_origins, aes(xintercept = upper), -->
+<!--              linewidth = 1.05, color = "salmon", linetype = "dotted") + -->
+<!--   geom_vline(xintercept = 0, linetype = "dashed") -->
+<!-- ``` -->
 
-### Trace - sites
+<!-- ### Trace - sites -->
 
-```{r}
-random_samples %>%
-  dplyr::filter(grepl("Cloture", modality)) %>%
+<!-- ```{r} -->
+<!-- random_samples %>% -->
+<!--   dplyr::filter(grepl("Cloture", modality)) %>% -->
 
-  ggplot(aes(y = estimate, x = iteration,
-             color = chain, linetype = subchain)) +
-  geom_line() +
-  facet_wrap(~modality) +
-  theme_bw() +
-  theme(strip.text.x = element_text(
-    size = 6,
-    margin = margin(0,0,0,0, "cm")))
-```
+<!--   ggplot(aes(y = estimate, x = iteration, -->
+<!--              color = chain, linetype = subchain)) + -->
+<!--   geom_line() + -->
+<!--   facet_wrap(~modality) + -->
+<!--   theme_bw() + -->
+<!--   theme(strip.text.x = element_text( -->
+<!--     size = 6, -->
+<!--     margin = margin(0,0,0,0, "cm"))) -->
+<!-- ``` -->
 
-```{r}
-random_samples %>%
-  dplyr::filter(!grepl("Cloture", modality)) %>%
+<!-- ```{r} -->
+<!-- random_samples %>% -->
+<!--   dplyr::filter(!grepl("Cloture", modality)) %>% -->
 
-  ggplot(aes(y = estimate, x = iteration,
-             color = chain, linetype = subchain)) +
-  geom_line() +
-  facet_wrap(~modality) +
-  theme_bw() +
-  theme(strip.text.x = element_text(
-    size = 6,
-    margin = margin(0,0,0,0, "cm")))
-```
+<!--   ggplot(aes(y = estimate, x = iteration, -->
+<!--              color = chain, linetype = subchain)) + -->
+<!--   geom_line() + -->
+<!--   facet_wrap(~modality) + -->
+<!--   theme_bw() + -->
+<!--   theme(strip.text.x = element_text( -->
+<!--     size = 6, -->
+<!--     margin = margin(0,0,0,0, "cm"))) -->
+<!-- ``` -->
 
-### Density - sites
+<!-- ### Density - sites -->
 
-```{r}
-summaries_sitesCloture <- random_samples %>%
-  dplyr::filter(grepl("Cloture", modality)) %>%
+<!-- ```{r} -->
+<!-- summaries_sitesCloture <- random_samples %>% -->
+<!--   dplyr::filter(grepl("Cloture", modality)) %>% -->
 
-  dplyr::group_by(modality) %>%
-  dplyr::summarise(
-    lower = quantile(estimate, probs = 0.025),
-    median = quantile(estimate, probs = 0.5),
-    upper = quantile(estimate, probs = 0.975)
-  ) %>%
-  dplyr::arrange(median) %>%
-  as.data.frame()
+<!--   dplyr::group_by(modality) %>% -->
+<!--   dplyr::summarise( -->
+<!--     lower = quantile(estimate, probs = 0.025), -->
+<!--     median = quantile(estimate, probs = 0.5), -->
+<!--     upper = quantile(estimate, probs = 0.975) -->
+<!--   ) %>% -->
+<!--   dplyr::arrange(median) %>% -->
+<!--   as.data.frame() -->
 
-random_samples %>%
-  dplyr::filter(grepl("Cloture", modality)) %>%
+<!-- random_samples %>% -->
+<!--   dplyr::filter(grepl("Cloture", modality)) %>% -->
 
-  ggplot(aes(x = estimate)) +
-  geom_density() +
-  facet_wrap(~modality, scales = "free_y") +
-  theme_bw() +
-  theme(strip.text.x = element_text(
-    size = 6,
-    margin = margin(0,0,0,0, "cm"))) +
-  geom_vline(data = summaries_sitesCloture, aes(xintercept = lower),
-             linewidth = 1.05, color = "salmon", linetype = "dotted") +
-  geom_vline(data = summaries_sitesCloture, aes(xintercept = median),
-             linewidth = 1.05, color = "salmon") +
-  geom_vline(data = summaries_sitesCloture, aes(xintercept = upper),
-             linewidth = 1.05, color = "salmon", linetype = "dotted") +
-  geom_vline(xintercept = 0, linetype = "dashed")
-```
+<!--   ggplot(aes(x = estimate)) + -->
+<!--   geom_density() + -->
+<!--   facet_wrap(~modality, scales = "free_y") + -->
+<!--   theme_bw() + -->
+<!--   theme(strip.text.x = element_text( -->
+<!--     size = 6, -->
+<!--     margin = margin(0,0,0,0, "cm"))) + -->
+<!--   geom_vline(data = summaries_sitesCloture, aes(xintercept = lower), -->
+<!--              linewidth = 1.05, color = "salmon", linetype = "dotted") + -->
+<!--   geom_vline(data = summaries_sitesCloture, aes(xintercept = median), -->
+<!--              linewidth = 1.05, color = "salmon") + -->
+<!--   geom_vline(data = summaries_sitesCloture, aes(xintercept = upper), -->
+<!--              linewidth = 1.05, color = "salmon", linetype = "dotted") + -->
+<!--   geom_vline(xintercept = 0, linetype = "dashed") -->
+<!-- ``` -->
 
-```{r}
-summaries_sitesOther <- random_samples %>%
-  dplyr::filter(!grepl("Cloture", modality)) %>%
+<!-- ```{r} -->
+<!-- summaries_sitesOther <- random_samples %>% -->
+<!--   dplyr::filter(!grepl("Cloture", modality)) %>% -->
 
-  dplyr::group_by(modality) %>%
-  dplyr::summarise(
-    lower = quantile(estimate, probs = 0.025),
-    median = quantile(estimate, probs = 0.5),
-    upper = quantile(estimate, probs = 0.975)
-  ) %>%
-  dplyr::arrange(median) %>%
-  as.data.frame()
+<!--   dplyr::group_by(modality) %>% -->
+<!--   dplyr::summarise( -->
+<!--     lower = quantile(estimate, probs = 0.025), -->
+<!--     median = quantile(estimate, probs = 0.5), -->
+<!--     upper = quantile(estimate, probs = 0.975) -->
+<!--   ) %>% -->
+<!--   dplyr::arrange(median) %>% -->
+<!--   as.data.frame() -->
 
-random_samples %>%
-  dplyr::filter(!grepl("Cloture", modality)) %>%
+<!-- random_samples %>% -->
+<!--   dplyr::filter(!grepl("Cloture", modality)) %>% -->
 
-  ggplot(aes(x = estimate)) +
-  geom_density() +
-  facet_wrap(~modality, scales = "free_y") +
-  theme_bw() +
-  theme(strip.text.x = element_text(
-    size = 6,
-    margin = margin(0,0,0,0, "cm"))) +
-  geom_vline(data = summaries_sitesOther, aes(xintercept = lower),
-             linewidth = 1.05, color = "salmon", linetype = "dotted") +
-  geom_vline(data = summaries_sitesOther, aes(xintercept = median),
-             linewidth = 1.05, color = "salmon") +
-  geom_vline(data = summaries_sitesOther, aes(xintercept = upper),
-             linewidth = 1.05, color = "salmon", linetype = "dotted") +
-  geom_vline(xintercept = 0, linetype = "dashed")
-```
+<!--   ggplot(aes(x = estimate)) + -->
+<!--   geom_density() + -->
+<!--   facet_wrap(~modality, scales = "free_y") + -->
+<!--   theme_bw() + -->
+<!--   theme(strip.text.x = element_text( -->
+<!--     size = 6, -->
+<!--     margin = margin(0,0,0,0, "cm"))) + -->
+<!--   geom_vline(data = summaries_sitesOther, aes(xintercept = lower), -->
+<!--              linewidth = 1.05, color = "salmon", linetype = "dotted") + -->
+<!--   geom_vline(data = summaries_sitesOther, aes(xintercept = median), -->
+<!--              linewidth = 1.05, color = "salmon") + -->
+<!--   geom_vline(data = summaries_sitesOther, aes(xintercept = upper), -->
+<!--              linewidth = 1.05, color = "salmon", linetype = "dotted") + -->
+<!--   geom_vline(xintercept = 0, linetype = "dashed") -->
+<!-- ``` -->
 
 <!-- ## Residuals -->
 
