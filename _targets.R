@@ -5,6 +5,10 @@ library(targets)
 # library(future.callr)
 # plan(callr)
 
+# Install SmasaraLight
+# install.packages("E:/Natheo_B/calibration_lad/SamsaRaLight_1.0.tar.gz", 
+#                  repos = NULL, type = "source")
+
 # Source functions in R folder
 lapply(grep("R$", list.files("R", recursive = TRUE), value = TRUE), 
        function(x) source(file.path("R", x)))
@@ -25,7 +29,7 @@ list(
   
   # PARAMETERS ----
   tar_target(SEED, 5030),
-  tar_target(PARALLEL_MOD, TRUE),
+  
   
   
   # PREPARE CALIBRATION ----
@@ -67,7 +71,7 @@ list(
                                                                    data_rad,
                                                                    init_db$plots)),
   
-  tar_target(output_lad_method1, fit_lad_method1(output_pacl_method1, 
+  tar_target(output_lad_method1, fit_lad_method1(output_pacl_method1,
                                                  max(lads_method1),
                                                  data_sensors_punobs,
                                                  "output/residuals_sensors")),
@@ -93,14 +97,12 @@ list(
                                              data_calib,
                                              data_rad,
                                              output_lad_method1,
-                                             species2calib,
-                                             parallel = PARALLEL_MOD)),
+                                             species2calib)),
 
 
   ### Run the MCMC ----
   tar_target(models_output, calibrate_models(models_setup,
-                                             sampling_algo = "DREAMzs",
-                                             parallel = PARALLEL_MOD)),
+                                             sampling_algo = "DREAMzs")),
 
 
   # COMPARE AND EVALUATE THE MODELS ----
@@ -117,6 +119,16 @@ list(
   ## Evaluate models with RMSE ----
   tar_target(models_evaluation, evaluate_models(models_summary_pointwise)),
   
+  
+  # SAVE OUTPUTS ----
+  tar_target(models_output_fp, save_models(exp_design, 
+                                           models_setup, 
+                                           models_output,
+                                           models_summary_pointwise,
+                                           models_comparison,
+                                           models_evaluation,
+                                           "output/calib/",
+                                           "out_20251202_clean.Rdata")),
   
   NULL
 )
