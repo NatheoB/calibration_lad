@@ -1,4 +1,5 @@
 fit_lad_method1 <- function(output_sensors,
+                            convergence_threshold,
                             data_sensors_punobs,
                             output_plots_fp) 
 {
@@ -21,7 +22,7 @@ fit_lad_method1 <- function(output_sensors,
       best_lad = lad[which.min(abs(res))]
     ) %>% 
     dplyr::mutate(
-      converged = best_lad<5
+      converged = best_lad<convergence_threshold
     ) %>% 
     dplyr::left_join(data_sensors_punobs, 
                      by = c("site", "id_sensor")) %>% 

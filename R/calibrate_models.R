@@ -1,19 +1,19 @@
 calibrate_models <- function(models_setup,
-                             n_chains,
-                             n_iterations,
-                             n_burning,
-                             sampling_algo) {
+                             sampling_algo = "DREAMzs",
+                             parallel = FALSE) {
   
   # Function to calibrate a model given the environment is set up ----
-  calibrate_model <- function(sampling_algo) {
+  calibrate_model <- function(sampling_algo,
+                              parallel = FALSE) {
     
     # Define settings ----
     settings <- list(iterations = mod_design$n_iterations, 
-                     nrChains = mod_design$n_chains,
+                     nrChains = mod_design$n_chains, 
+                     parallel = parallel,
                      burnin = 0, 
                      gamma = NULL, eps = 0, e = 0.05, 
                      pCRupdate = TRUE, updateInterval = 50, thin = 1, 
-                     adaptation = 0.2, parallel = NULL, Z = NULL, ZupdateFrequency = 10, 
+                     adaptation = 0.2, Z = NULL, ZupdateFrequency = 10, 
                      pSnooker = 0.3, DEpairs = 2, consoleUpdates = 1, startValue = NULL, 
                      message = TRUE)
     
@@ -55,7 +55,7 @@ calibrate_models <- function(models_setup,
     environment(calibrate_model) <- models_setup[[id_simu]]
     
     # Run the model
-    models_output[[id_simu]] <- calibrate_model(sampling_algo)
+    models_output[[id_simu]] <- calibrate_model(sampling_algo, parallel)
   }
   
   

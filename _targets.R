@@ -25,8 +25,7 @@ list(
   
   # PARAMETERS ----
   tar_target(SEED, 5030),
-  tar_target(n_posteriors_analysis, 1000),
-  
+  tar_target(PARALLEL_MOD, TRUE),
   
   
   # PREPARE CALIBRATION ----
@@ -61,7 +60,7 @@ list(
   
   ## METHOD 1: simple minimization of residuals ----
 
-  tar_target(lads_method1, seq(0.001, 5, by = 0.001)),
+  tar_target(lads_method1, seq(0.01, 5, by = 0.01)),
   
   tar_target(output_pacl_method1, get_sensors_pacl_sitespecificLAD(lads_method1,
                                                                    data_calib,
@@ -69,6 +68,7 @@ list(
                                                                    init_db$plots)),
   
   tar_target(output_lad_method1, fit_lad_method1(output_pacl_method1, 
+                                                 max(lads_method1),
                                                  data_sensors_punobs,
                                                  "output/residuals_sensors")),
   
@@ -93,20 +93,21 @@ list(
                                              data_calib,
                                              data_rad,
                                              output_lad_method1,
-                                             species2calib)),
+                                             species2calib,
+                                             parallel = PARALLEL_MOD)),
 
 
   ### Run the MCMC ----
   tar_target(models_output, calibrate_models(models_setup,
-                                             sampling_algo = "DREAMzs")),
+                                             sampling_algo = "DREAMzs",
+                                             parallel = PARALLEL_MOD)),
 
 
   # COMPARE AND EVALUATE THE MODELS ----
 
-  ## Get pointwise matrices (log-likelihood and residuals) ----
+  # Get pointwise matrices (log-likelihood and residuals) ----
   tar_target(models_summary_pointwise, get_summary_pointwise_models(models_setup,
-                                                                    models_output,
-                                                                    n_posteriors_analysis)),
+                                                                    models_output)),
 
 
   ## Compare models with LOO-CV and WAIC ----

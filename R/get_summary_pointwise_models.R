@@ -1,12 +1,11 @@
 get_summary_pointwise_models <- function(models_setup,
-                                         models_output,
-                                         n_values) {
+                                         models_output) {
   
-  get_summary_pointwise_model <- function(output, n_values) {
+  get_summary_pointwise_model <- function(output) {
     
     # Get samples of the chains of the model (bind the chains samplings with coda argument)
     samples <- BayesianTools::getSample(output, coda = F)
-    samples <- samples[(nrow(samples)-n_values+1):nrow(samples),]
+    samples <- samples[(nrow(samples)-mod_design$n_analysis+1):nrow(samples),]
     
     # Get the number of observation (i.e. total number of sesnors over all the sites)
     n_sensors <- nrow(data_sensors %>% dplyr::bind_rows())
@@ -56,8 +55,7 @@ get_summary_pointwise_models <- function(models_setup,
     environment(get_summary_pointwise_model) <- models_setup[[id_simu]]
     
     # Get the model residuals and pointwise log-likelihood matrices
-    models_matrices[[id_simu]] <- get_summary_pointwise_model(models_output[[id_simu]]$outputs,
-                                                              n_values)
+    models_matrices[[id_simu]] <- get_summary_pointwise_model(models_output[[id_simu]]$outputs)
   }
   
   # Return the list of models' summary matrices ----

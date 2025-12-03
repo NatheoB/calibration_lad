@@ -4,7 +4,8 @@ initialise_models <- function(exp_design,
                               data_calib,
                               data_rad,
                               output_lad_method1,
-                              species2calib) {
+                              species2calib,
+                              parallel = FALSE) {
   
   
   ## Create the Bayesian setup for each model ----
@@ -36,7 +37,8 @@ initialise_model <- function(mod_design,
                              data_calib, 
                              data_rad,
                              output_lad_method1,
-                             species2calib) {
+                             species2calib,
+                             parallel = FALSE) {
   
   # BayesianTools consider global variables during the MCMC sampling
   # Thus, we need to create an environment with all the functions and variables needed for MCMC sampling
@@ -50,9 +52,9 @@ initialise_model <- function(mod_design,
                                data_calib, 
                                data_rad,
                                site, 
-                               lad_sites,
-                               lad_species
-                               # lad_dbh,
+                               lad_random_per_sites,
+                               lad_intercept_per_sp,
+                               lad_dbh_per_sp
                                # lad_compet
                                ) {
     
@@ -61,21 +63,21 @@ initialise_model <- function(mod_design,
     # It is the same as in the species2calib and in p_lad_intercepts
     sp_intercepts <- data.frame(
       species_calib = species2calib,
-      intercept = lad_species
-      # dbh_coef = lad_dbh,
+      intercept_sp = lad_intercept_per_sp,
+      beta_dbh_sp = lad_dbh_per_sp
       # compet_coef = lad_compet
     )
     
     # Random site effect ----
     # Here, the order is really important, and is the same between site_names and lad_sites vectors
-    site_intercept <- lad_sites[which(site_names == site)]
+    random_site <- lad_random_per_sites[which(site_names == site)]
     
     # Compute the tree LAD ----
     # Here, only add the site random effect, as the origin effect in already included in the estimation of the site effect (hierarchical structure)
     tmp_trees <- data_calib[[site]]$trees %>% 
       dplyr::left_join(sp_intercepts, by = "species_calib") %>% 
       dplyr::mutate( 
-        eta = site_intercept + intercept,
+        eta = random_site + intercept_sp + beta_dbh_sp * dbhstd,
         crown_lad = exp(eta)
       )
     
@@ -117,9 +119,9 @@ initialise_model <- function(mod_design,
                                      data_plots,
                                      data_calib,
                                      data_rad,
-                                     lad_sites,
-                                     lad_species,
-                                     # lad_dbh,
+                                     lad_random_per_sites,
+                                     lad_intercept_per_sp,
+                                     lad_dbh_per_sp,
                                      # lad_compet,
                                      print.pb) {
     
@@ -143,9 +145,9 @@ initialise_model <- function(mod_design,
         data_calib, 
         data_rad,
         site, 
-        lad_sites,
-        lad_species
-        # lad_dbh,
+        lad_random_per_sites,
+        lad_intercept_per_sp,
+        lad_dbh_per_sp
         # lad_compet
       )
       
@@ -207,8 +209,26 @@ initialise_model <- function(mod_design,
       p_sigma_site <- 0
     }
     
+    ## 1.4. Intercept effect ----
+    ## Hyperparameter SD for intercept 
+    if (mod_design$intercept_sp_pooling) {
+      p_sigma_intercept <- p[i_param]
+      i_param <- i_param + 1
+    } else {
+      p_sigma_intercept <- 0
+    }
     
-    # 2. Latent variables of random effects ----
+    ## 1.5. Dbh effect ----
+    ## Hyperparameter SD for dbh effect
+    if (mod_design$dbh_sp_pooling) {
+      p_sigma_dbh <- p[i_param]
+      i_param <- i_param + 1
+    } else {
+      p_sigma_dbh <- 0
+    }
+    
+    
+    # 2. Random effects latent variables ----
     
     ## 2.1. Origin random effect----
     if (mod_design$origin_rd_effect) {
@@ -227,212 +247,228 @@ initialise_model <- function(mod_design,
     }
     
     
+    # 3. Predictors effect ----
     
-    # 3. LAD intercept ----
+    ## 3.1. Intercept ----
     
-    if (mod_design$species_specific) {
-      # species-specific intercept
-      p_lad_species <- p[i_param + (1:n_species) - 1]
-      i_param <- i_param + n_species
-
+    if (mod_design$intercept_per_sp) {
+    
+      if (mod_design$intercept_sp_pooling) {
+        
+        # Hyperparameter mean for species
+        ## (i.e. as DBH standardised, mean species LAD at mean DBH)
+        p_mean_intercept <- p[i_param]
+        i_param <- i_param + 1 
+        
+        # Species-specific effect for intercept  
+        # Latent variables z (for MVN) 
+        p_intercept_per_sp <- p[i_param + (1:n_species) - 1]
+        i_param <- i_param + n_species
+        
+      } else {
+        
+        # otherwise, without partial species spooling
+        # fit intercept alpha independently between species
+        # Thus set mean to 0 and SD to 1 (i.e. latent variable z become directly the fitted parameter)
+        p_mean_intercept <- 0
+        p_intercept_per_sp <- p[i_param + (1:n_species) - 1]
+        i_param <- i_param + n_species
+      }
+      
     } else {
-      # a single intercept for all species
-      p_lad_species <- rep(p[i_param], n_species)
+      
+      # Single intercept over all species
+      p_mean_intercept <- 0
+      p_intercept_per_sp <- rep(p[i_param], n_species)
       i_param <- i_param + 1
+    }
+    
+    
+    
+    ## 3.2. DBH effect ----
+    if (mod_design$dbh_effect) {
+      
+      if (mod_design$dbh_per_sp) {
+        
+        if (mod_design$dbh_sp_pooling) {
+          
+          # Hyperparameter mean for dbh effect
+          p_mean_dbh <- p[i_param]
+          i_param <- i_param + 1 
+          
+          # Species-specific dbh effect
+          # Latent variables z (for MVN) 
+          p_dbh_per_sp <- p[i_param + (1:n_species) - 1]
+          i_param <- i_param + n_species
+          
+          
+        } else {
+          
+          # otherwise, without partial species spooling, 
+          # fit beta independently between species 
+          # Thus set mean to 0 and SD to 1 (i.e. latent variable z become directly the fitted parameter)
+          p_mean_dbh <- 0
+          p_dbh_per_sp <- p[i_param + (1:n_species) - 1]
+          i_param <- i_param + n_species
+        }
+        
+      } else {
+        
+        # single dbh effect over all species
+        p_mean_dbh <- 0
+        p_dbh_per_sp <- rep(p[i_param], n_species)
+        i_param <- i_param + 1
+      }
+      
+    } else {
+      
+      # Otherwise, no dbh effect
+      p_mean_dbh <- 0
+      p_dbh_per_sp <- rep(0, n_species)
+    }
+    
+    
+    # 4. Covariance between intercept/slope ----
+    if (mod_design$consider_covariance) {
+      
+      # Rho parameter (correlation factor)
+      p_rho_raw <- p[i_param]
+      i_param <- i_param + 1
+      
+    } else {
+      
+      p_rho_raw <- 0
     }
     
     
     # List with all different group of parameters ----
     return(list(
+      
+      # Model SD residuals
       "sigma_log" = p_sigma,
+      
+      # Hierarchical random effect
       "sigma_origin_log" = p_sigma_origin,
       "sigma_site_log" = p_sigma_site,
-      "z_origins" = p_z_origins,
-      "z_sites" = p_z_sites,
-      "species" = p_lad_species
-    ))
-    
-    
+      "z_random_per_origin" = p_z_origins,
+      "z_random_per_site" = p_z_sites,
       
-    # # 2. Random effects
-    # 
-    # ## 2.1. Standard deviations
-    # if (mod_design$origin_rd_effect) {
-    #   p_sigma_origins <- p[i_param] # SD of the origin effect
-    #   i_param <- i_param + 1
-    #   
-    # } else {
-    #   # Otherwise, NULL standard deviation
-    #   p_sigma_origins <- NULL
-    # }
-    # 
-    # 
-    # if (mod_design$site_rd_effect) {
-    #   p_sigma_sites <- p[i_param] # SD of the site effect
-    #   i_param <- i_param + 1
-    # 
-    # } else {
-    #   # Otherwise, NULL standard deviation
-    #   p_sigma_sites <- NULL
-    # }
-    # 
-    # 
-    # ## 2.2. Random intercepts
-    # if (mod_design$origin_rd_effect) {
-    #   p_lad_origins <- p[i_param + (1:n_origins) - 1] # Origins intercepts
-    #   i_param <- i_param + n_origins
-    #   
-    # } else {
-    #   # Otherwise, random origins effect is always 0
-    #   p_lad_origins <- rep(0, n_origins)
-    # }
-    # 
-    # 
-    # if (mod_design$site_rd_effect) {
-    #   p_lad_sites <- p[i_param + (1:n_sites) - 1] # Site intercepts
-    #   i_param <- i_param + n_sites
-    #   
-    # } else {
-    #   # Otherwise, random site effect is always 0
-    #   p_lad_sites <- rep(0, n_sites)
-    # }
-    # 
-    
-    # # 3. Species-specific parameters
-    # 
-    # ## 3.1. Intercept
-    # 
-    # if (mod_design$species_specific) {
-    #   # species-specific intercept
-    #   p_lad_species <- p[i_param + (1:n_species) - 1]
-    #   i_param <- i_param + n_species
-    #   
-    # } else {
-    #   # a single intercept for all species
-    #   p_lad_species <- rep(p[i_param], n_species)
-    #   i_param <- i_param + 1
-    # }
-    # 
-    # 
-    # ## 3.2. DBH effect
-    # if (mod_design$dbh_effect) {
-    #   
-    #   if (mod_design$species_specific) {
-    #     # dbh effect for each species
-    #     p_lad_dbh <- p[i_param + (1:n_species) - 1]
-    #     i_param <- i_param + n_species
-    #     
-    #   } else {
-    #     # a single dbh effect for all species
-    #     p_lad_dbh <- rep(p[i_param], n_species)
-    #     i_param <- i_param + 1
-    #   }
-    #   
-    # } else {
-    #   # Otherwise, dbh effect is always 0
-    #   p_lad_dbh <- rep(0, n_species)
-    # } 
-    # 
-    # 
-    # if (mod_design$compet_effect) {
-    #   
-    #   if (mod_design$species_specific) {
-    #     # compet effect for each species
-    #     p_lad_compet <- p[i_param + (1:n_species) - 1]
-    #     i_param <- i_param + n_species
-    #     
-    #   } else {
-    #     # a single compet effect for all species
-    #     p_lad_compet <- rep(p[i_param], n_species)
-    #     i_param <- i_param + 1
-    #   }
-    #   
-    # } else {
-    #   # Otherwise, compet effect is always 0
-    #   p_lad_compet <- rep(0, n_species)
-    # } 
-    # 
-    # 
-    # # List with all different group of parameters 
-    # return(list(
-    #   "sigma" = p_sigma,
-    #   "sigma_origins" = p_sigma_origins,
-    #   "sigma_sites" = p_sigma_sites,
-    #   "origins" = p_lad_origins,
-    #   "sites" = p_lad_sites,
-    #   "species" = p_lad_species,
-    #   "dbh" = p_lad_dbh,
-    #   "compet" = p_lad_compet
-    # ))
+      # Predictors effect
+      "intercept_per_sp" = p_intercept_per_sp,
+      "dbh_per_sp" = p_dbh_per_sp,
+      
+      # Hyperparameters of predictors
+      "mean_intercept" = p_mean_intercept,
+      "mean_dbh" = p_mean_dbh,
+      "sigma_intercept_log" = p_sigma_intercept,
+      "sigma_dbh_log" = p_sigma_dbh,
+      
+      # Correlation parameter for MVN
+      "rho_raw" = p_rho_raw
+      
+    ))
   }
   
   
   ## FUNCTION TO COMPUTE LOG LIKELIHOOD OF THE DATA ----
   compute_log_likelihood <- function(p, pointwise = FALSE, print.pb = FALSE) {
     
+    
     # 1. Parameters of the LAD model ---- 
     
     ## 1.1. Unpack the parameter vector ----
     p_list <- split_parameters_vector(p)
   
-    ## 1.2. Unlog the sigma parameters ----
-    p_sigma <- exp(p_list$sigma_log)
-    
-    p_sigma_origin <- exp(p_list$sigma_origin_log)
-    p_sigma_site <- exp(p_list$sigma_site_log)
-    
-    ## 1.3. Check for invalid parameter values ----
+    ## 1.2. Check for invalid parameter values ----
     # if (any(!is.finite(unlist(p_list)))) return(-Inf)
 
     
-    # 2. Compute the non-centered hierarchical site/origin random effect ----
     
-    ## 2.1. Compute the origins mean ----
-    mean_origins <- p_sigma_origin * p_list$z_origins  # z_origin ~ N(0,1)
+    # 2. Compute the hierarchical random effects ----
+    # non-centered parameterization
     
-    ## 2.2. Get the associated origin mean for each site ----
-    mean_sites <- mean_origins[site_origins_id]
+    ### 2.1. Unlog sigma parameters ----
+    p_sigma_origin <- exp(p_list$sigma_origin_log)
+    p_sigma_site <- exp(p_list$sigma_site_log)
     
-    ## 2.3. Site effect nested in the origin effect ----
-    p_sites <- mean_sites + p_sigma_site * p_list$z_sites  # z_site ~ N(0,1)
+    ## 2.2. Compute the origins mean ----
+    mean_origins <- p_sigma_origin * p_list$z_random_per_origin  # z_origin ~ N(0,1)
+    
+    ## 2.3. Get the associated origin mean for each site ----
+    mean_origins_per_site <- mean_origins[id_origin_per_site]
+    
+    ## 2.4. Site effect nested in the origin effect ----
+    p_random_per_site <- mean_origins_per_site + p_sigma_site * p_list$z_random_per_site  # z_site ~ N(0,1)
     
     
     
-    # 3. Compute the residuals with the given lad parameters ----
+    # 3. Compute intercept and dbh effects ----
     
-    ## 3.1. get residuals by running SmasaraLight ----
+    ## 3.1. Transform back the correlation factor ----
+    # Here, fit an unconstrained rho and apply a transformation to ensure -1 < rho < 1
+    # ensure rho constrains with a better MCMC mixing and stability
+    # plogis(x) in ]0,1[, 2*plogis(x) in ]0,2[ and 2*plogis(x) - 1 in ]-1,1[
+    rho <- 2*plogis(p_list$rho_raw) - 1 
+    
+    
+    ## 3.2. Transform back the SDs ----
+    # To ensure SD positivity without constrained, by fitting in an infinite range
+    sigma_intercept <- exp(p_list$sigma_dbh_log)
+    sigma_dbh <- exp(p_list$sigma_dbh_log)
+    
+    
+    ## 3.3. Compute the species parameters alpha and beta ----
+    # Here, z_alpha/z_beta is a vector of latent variables for each species
+    # Be careful, it is well ordered to respect the species order
+    # z_alpha and z_beta ~ N(0,1)
+    # If MVN, we compute SIGMA with the Cholesky factor L (SIGMA = L.t(L))
+    p_intercept_per_sp <- p_list$mean_intercept + sigma_intercept * p_list$intercept_per_sp
+    
+    sqrt1mr2 <- sqrt(1 - rho^2) # Intermediate variables to faster the computation time
+    p_dbh_per_sp <- p_list$mean_dbh + sigma_dbh * (rho * p_list$intercept_per_sp + sqrt1mr2 * p_list$dbh_per_sp)
+    
+    
+    
+    # 4. Compute the residuals with the given lad parameters ----
+    
+    ## 4.1. get residuals by running SmasaraLight ----
     out_sl <- compute_pacl_residuals(data_sensors,
                                      data_plots,
                                      data_calib, 
                                      data_rad, 
-                                     p_sites,
-                                     p_list$species,
-                                     # p_list$dbh,
+                                     p_random_per_site,
+                                     p_intercept_per_sp,
+                                     p_dbh_per_sp,
                                      # p_list$compet,
                                      print.pb)
     residuals <- out_sl$residuals
     
-    ## 3.2. Check for invalid residuals
+    ## 4.2. Check for invalid residuals
     # if (any(!is.finite(residuals))) return(-Inf)
 
     
     
-    # 4. Compute the log-likelihood
+    # 5. Compute the log-likelihood
     
-    ## 4.1. Total log-likelihood of the data ----
+    ## 5.1. Unlog sigma parameter ----
+    p_sigma <- exp(p_list$sigma_log)
+    
+    
+    ## 5.2. Total log-likelihood of the data ----
     # During the MCMC sampling,
     # We combine this log-likelihood with the log-priors computed by BayesianTools from priors defined in the BAyesian Setup 
     log_likelihood_data <- dnorm(residuals, 
                                  mean = 0, sd = p_sigma, 
                                  log = TRUE)
     
-    ## 4.2. Check for invalid log-likelihood ----
+    ## 5.3. Check for invalid log-likelihood ----
     # if (any(!is.finite(log_likelihood_data))) return(-Inf)
   
     
-    # 5. Return summed or pointwise log-likelihood ----
     
-    ## 5.1. Pointwise log-likelihood and residuals ----
+    # 6. Return correct log-likelihood ----
+    
+    ## 6.1. Pointwise log-likelihood and residuals ----
     # If pointwise log-likelihood (used for WAIC), return the sum of the log likelihood ONLY from observations
     # For WAIC, the pointwise log-likelihoods should be based only on the likelihood of observed data, 
     # not including the random effects prior (i.e., their contribution to the joint likelihood). 
@@ -447,7 +483,7 @@ initialise_model <- function(mod_design,
     }
     
     
-    ## 5.2. Otherwise, return the log-likelihood scalar ----
+    ## 6.2. Otherwise, return the log-likelihood scalar ----
     return(sum(log_likelihood_data))
   }
     
@@ -667,12 +703,31 @@ initialise_model <- function(mod_design,
   
   
   
-  ## Base variables ----
+  ## Standardized variables ----
+  
+  ### DBH
+  dbh_vect <- data_calib %>% 
+    purrr::map(~.x$trees$dbh_cm) %>% 
+    purrr::reduce(c)
+  
+  dbh_mean <- mean(dbh_vect)
+  dbh_sd <- sd(dbh_vect)
+  
+  data_calib <- data_calib %>% 
+    purrr::map(~{
+      .x$trees <- .x$trees %>% 
+        dplyr::mutate(dbhstd = (dbh_cm - dbh_mean) / dbh_sd)
+      .x
+    })
+  
+  
+  
+  ## Global variables ----
   origin_names <- unique(data_plots$origin)
   site_names <- data_plots$name
   
   site_origins <- data_plots$origin # Origins of all the site
-  site_origins_id <- match(site_origins, origin_names) # Corresponding id in origin_names for all the sites
+  id_origin_per_site <- match(site_origins, origin_names) # Corresponding id in origin_names for all the sites
   
   n_species <- length(species2calib)
   n_origins <- length(origin_names)
@@ -722,6 +777,20 @@ initialise_model <- function(mod_design,
     prior_normal_sd <- c(prior_normal_sd, 0.5)
   }
   
+  #### Intercept species partial pooling ----
+  if (mod_design$intercept_sp_pooling) {
+    par_normal <- c(par_normal, "sigma_intercept_log")
+    prior_normal_mean <- c(prior_normal_mean, log(0.3))
+    prior_normal_sd <- c(prior_normal_sd, 0.5)
+  }
+  
+  #### Dbh effect species partial pooling ----
+  if (mod_design$dbh_sp_pooling) {
+    par_normal <- c(par_normal, "sigma_dbh_log")
+    prior_normal_mean <- c(prior_normal_mean, log(0.3))
+    prior_normal_sd <- c(prior_normal_sd, 0.5)
+  }
+  
   # #### Model residuals
   # par_halfCauchy <- c(par_halfCauchy, "sigma")
   # prior_halfcauchy_S <- c(prior_halfcauchy_S, 3)
@@ -739,19 +808,20 @@ initialise_model <- function(mod_design,
   # }
  
   
-  ### Latent variables of random effects ----
-  # Latent variables N(0,1)
+  ### Random effect latent variables ----
+  # Non-centered parameterization with latent variables N(0,1)
+  # To increase computation time and favour mixing
   
   #### Origin random effect ----
   if (mod_design$origin_rd_effect) {
-    par_normal <- c(par_normal, paste0("origin.", origin_names))
+    par_normal <- c(par_normal, paste0("z_origin.", origin_names))
     prior_normal_mean <- c(prior_normal_mean, rep(0, times=n_origins))
     prior_normal_sd <- c(prior_normal_sd, rep(1, times=n_origins))
   }
   
   #### Site random effect ----
   if (mod_design$site_rd_effect) {
-    par_normal <- c(par_normal, paste0("site.", site_names))
+    par_normal <- c(par_normal, paste0("z_site.", site_names))
     prior_normal_mean <- c(prior_normal_mean, rep(0, times=n_sites))
     prior_normal_sd <- c(prior_normal_sd, rep(1, times=n_sites))
   }
@@ -765,50 +835,115 @@ initialise_model <- function(mod_design,
   if (lad_guess_method1 <= 0) stop("best lad guess from methodo is lower or equal to 0")
   lad_guess_method1_log <- log(lad_guess_method1)
   
-  if (mod_design$species_specific) {
+  
+  # Species-specific intercept
+  if (mod_design$intercept_per_sp) {
     
-    # species-specific intercept
-    par_normal <- c(par_normal, paste0("species.", species2calib)) 
-    prior_normal_mean <- c(prior_normal_mean, rep(lad_guess_method1_log, times=n_species))
-    prior_normal_sd <- c(prior_normal_sd, rep(0.5, times=n_species))
+    # Model the species-specific intercept within a normal distribution
+    # centered around a mean species mean_intercept with a sd parameter sigma_intercept
+    # the sigma paramter sigma_intercept has been defined previously
+    if (mod_design$intercept_sp_pooling) {
+      
+      # Mean species with a prior centered around the predicted LAD from methodology 1
+      par_normal <- c(par_normal, "mean_intercept")
+      prior_normal_mean <- c(prior_normal_mean, lad_guess_method1_log)
+      prior_normal_sd <- c(prior_normal_sd, 0.5) 
+      
+      # Latent variables (for species pooling)
+      # To increase computation time and favour mixing: use a non-centered parametrization
+      # Get the species intercept with alpha_s = mean + sigma * z_s (with z in N(0,1))
+      par_normal <- c(par_normal, paste0("z_intercept.", species2calib))
+      prior_normal_mean <- c(prior_normal_mean, rep(0, times=n_species))
+      prior_normal_sd <- c(prior_normal_sd, rep(1, times=n_species))
+      
+      
+    } else {
+      
+      # fit intercept directly otherwise
+      par_normal <- c(par_normal, paste0("intercept.", species2calib)) 
+      prior_normal_mean <- c(prior_normal_mean, rep(lad_guess_method1_log, times=n_species))
+      prior_normal_sd <- c(prior_normal_sd, rep(0.5, times=n_species))
+    }
     
   } else {
     
     # a single intercept for all species
     par_normal <- c(par_normal, "intercept")
     prior_normal_mean <- c(prior_normal_mean, lad_guess_method1_log)
-    prior_normal_sd <- c(prior_normal_sd, 0.5)
-    
+    prior_normal_sd <- c(prior_normal_sd, 0.5) 
   }
   
   
   
-  # DBH effect
+  ### DBH effect ----
+  # BE CAREFUL : DBH in this model is standardized
+  # LAD = intercept at DBHstd = 0 <=> DBH = mean(dataset)
   if (mod_design$dbh_effect) {
-    stop("-- DEBUG -- : DBH effect does not work")
     
-    # if (mod_design$species_specific) {
-    #   
-    #   # dbh effect for each species
-    #   par_names <- c(par_names, paste0("dbh.", species2calib)) 
-    #   prior_normal_mean <- c(prior_normal_mean, rep(0, times=n_species))
-    #   prior_normal_sd <- c(prior_normal_sd, rep(0.1, times=n_species))
-    #   
-    # } else {
-    #   
-    #   # a single dbh effect for all species
-    #   par_names <- c(par_names, "dbh")
-    #   prior_normal_mean <- c(prior_normal_mean, 0)
-    #   prior_normal_sd <- c(prior_normal_sd, 0.1)
-    #   
-    # }
+    if (mod_design$dbh_per_sp) {
+      
+      # Model the species-specific dbh effect within a normal distribution
+      # centered around a single mean mean_dbh with a sd parameter sigma_dbh
+      # the sigma paramter sigma_intercept has been defined previously
+      if (mod_design$dbh_sp_pooling) {
+        
+        # Mean species dbh effect with a prior centered around 0 (no effect)
+        par_normal <- c(par_normal, "mean_dbh")
+        prior_normal_mean <- c(prior_normal_mean, 0)
+        prior_normal_sd <- c(prior_normal_sd, 0.2) 
+        
+        # Latent variables (for species pooling)
+        # To increase computation time and favour mixing: use a non-centered parametrization
+        # Get the species dbh effect with alpha_s = mean + sigma * z_s (with z in N(0,1))
+        par_normal <- c(par_normal, paste0("z_dbh.", species2calib))
+        prior_normal_mean <- c(prior_normal_mean, rep(0, times=n_species))
+        prior_normal_sd <- c(prior_normal_sd, rep(1, times=n_species))
+        
+        
+      } else {
+        
+        # fit dbh coefficient directly otherwise
+        par_normal <- c(par_normal, paste0("dbh.", species2calib)) 
+        prior_normal_mean <- c(prior_normal_mean, rep(0, times=n_species))
+        prior_normal_sd <- c(prior_normal_sd, rep(0.2, times=n_species))
+      }
+      
+    } else {
+      
+      # a single intercept for all species
+      par_normal <- c(par_normal, "dbh")
+      prior_normal_mean <- c(prior_normal_mean, 0)
+      prior_normal_sd <- c(prior_normal_sd, 0.2) 
+    }
     
   } # Otherwise, no dbh effect
 
   
+  ### Covariance intercept/slope ----
+  if (mod_design$consider_covariance) {
+    
+    # Send error if cannot model covariance 
+    if (!mod_design$intercept_per_sp | 
+        !mod_design$dbh_effect | 
+        !mod_design$dbh_per_sp | 
+        !mod_design$intercept_sp_pooling | 
+        !mod_design$dbh_sp_pooling) {
+      stop("To model the variance-covariance matrix, you need to consider a partial pooling species-specific intercept and dbh")
+    }
+    
+    # Add rho parameter (correlation factor)
+    # Here we model rho_raw which is back transformed into rho with rho = 2*plogis(rho_raw) - 1
+    # Easier to mix for MCMC because unconstrained parameter, whereas -1 < rho < 1
+    # And transformation transform rho from ]-Inf, +Inf[ to ]-1, 1[
+    par_normal <- c(par_normal, "rho_raw")
+    prior_normal_mean <- c(prior_normal_mean, 0)
+    prior_normal_sd <- c(prior_normal_sd, 1) 
+  }
+  
+  
   ## Competition effect
   if (mod_design$compet_effect) {
-    stop("DEBUG: competition effect do not work now")
+    stop("DEBUG: competition effect do not work for now")
     
     # if (mod_design$species_specific) {
     #   # competition effect for each species
@@ -842,7 +977,8 @@ initialise_model <- function(mod_design,
   bayesianSetup <- BayesianTools::createBayesianSetup(
     likelihood = compute_log_likelihood, 
     prior = priors,
-    names = par_names
+    names = par_names,
+    parallel = parallel
   )
   
   
