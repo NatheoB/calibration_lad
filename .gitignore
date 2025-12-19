@@ -6,3 +6,5 @@ output/
 data/
 dev/
 _targets/
+logs/
+paper/

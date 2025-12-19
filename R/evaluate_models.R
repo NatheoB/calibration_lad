@@ -9,13 +9,18 @@ evaluate_models <- function(models_summary_pointwise) {
                             names_to = "id_sensor",
                             values_to = "residuals",
                             names_prefix = "V",
-                            names_transform = as.numeric)
+                            names_transform = as.numeric) %>% 
+        dplyr::mutate(
+          id_model = .x$id_model,
+          i_chain = .x$i_chain,
+          .before = iteration
+        )
     )
   
   evaluation_indicators <- data_residuals %>% 
     purrr::map(
        ~.x %>% 
-        dplyr::group_by(iteration) %>% 
+        dplyr::group_by(id_model, i_chain, iteration) %>% 
         dplyr::summarise(
           MAE = mean(abs(residuals)),
           RMSE = sqrt(mean(residuals^2))

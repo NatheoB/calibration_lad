@@ -20,7 +20,9 @@ compare_models <- function(models_summary_pointwise) {
       
       return(list(
         "WAIC" = waic_result,
-        "LOOCV" = loo_result
+        "LOOCV" = loo_result,
+        "id_model" = x$id_model,
+        "i_chain" = x$i_chain
       ))
       
     })

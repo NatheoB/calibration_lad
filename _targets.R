@@ -1,12 +1,12 @@
 # _targets.R file
 library(targets)
 
-# library(future)
-# library(future.callr)
-# plan(callr)
+library(future)
+library(future.callr)
+plan(callr)
 
 # Install SmasaraLight
-# install.packages("E:/Natheo_B/calibration_lad/SamsaRaLight_1.0.tar.gz", 
+# install.packages("SamsaRaLight_1.0.tar.gz",
 #                  repos = NULL, type = "source")
 
 # Source functions in R folder
@@ -16,6 +16,7 @@ lapply(grep("R$", list.files("R", recursive = TRUE), value = TRUE),
 
 # Set options (i.e. clustermq.scheduler for multiprocess computing)
 options(tidyverse.quiet = TRUE, clustermq.scheduler = "multiprocess")
+
 
 tar_option_set(packages = c("dplyr", "tidyr", "data.table", 
                             "vroom", "purrr", 
@@ -29,6 +30,10 @@ list(
   
   # PARAMETERS ----
   tar_target(SEED, 5030),
+  
+  tar_target(CHAINS, 1),
+  
+  tar_target(LAD_CONTROL, 0.5),
   
   
   
@@ -60,9 +65,12 @@ list(
                                                      thresholds_punobs,
                                                      "output/initial_sensors")),
   
+  
+  
   # CALIBRATE THE LAD ----
   
-  ## METHOD 1: simple minimization of residuals ----
+  ## Preliminary analysis ----
+  # simple minimization of residuals
 
   tar_target(lads_method1, seq(0.01, 5, by = 0.01)),
   
@@ -76,8 +84,10 @@ list(
                                                  data_sensors_punobs,
                                                  "output/residuals_sensors")),
   
+  tar_target(best_lad_method1, mean(output_lad_method1$best_lad[output_lad_method1$converged])),
   
-  ## METHOD 2: Bayesian calibration ----
+  
+  ## Bayesian calibration ----
   
   ### Get the species to calibrate ----
   tar_target(sp_calib_occ, get_occurences_species2calib(init_db)),
@@ -86,8 +96,9 @@ list(
   
   ### Create the experimental design ----
   tar_target(exp_design, create_experimental_design()),
+  tar_target(id_models, exp_design$id_model),
 
-
+  
   ### Initialise the Bayesian setups ----
   # 465/1121 sensors had been removed
   # 3 sites had been removed : Cloture11, Cloture15, Cloture2
@@ -97,38 +108,85 @@ list(
                                              data_calib,
                                              data_rad,
                                              output_lad_method1,
-                                             species2calib)),
+                                             species2calib,
+                                             prior_lad = 0.5)),
 
 
   ### Run the MCMC ----
-  tar_target(models_output, calibrate_models(models_setup,
-                                             sampling_algo = "DREAMzs")),
+  tar_target(models_output_list, calibrate_models(models_setup,
+                                                  sampling_algo = "DREAMzs",
+                                                  id_model = id_models,
+                                                  i_chain = CHAINS,
+                                                  logs_folder = "logs"),
+             pattern = cross(id_models, CHAINS),
+             iteration = "list"),
+  
 
-
+  
   # COMPARE AND EVALUATE THE MODELS ----
 
-  # Get pointwise matrices (log-likelihood and residuals) ----
-  tar_target(models_summary_pointwise, get_summary_pointwise_models(models_setup,
-                                                                    models_output)),
+  ## Compute pointwise likelihoods ----
+  tar_target(models_summary_pointwise_list, get_summary_pointwise_models(models_setup,
+                                                                         models_output_list,
+                                                                         logs_folder = "logs"),
+             pattern = map(models_output_list),
+             iteration = "list"),
 
 
+  
   ## Compare models with LOO-CV and WAIC ----
-  tar_target(models_comparison, compare_models(models_summary_pointwise)),
+  tar_target(models_comparison, compare_models(models_summary_pointwise_list)),
 
 
   ## Evaluate models with RMSE ----
-  tar_target(models_evaluation, evaluate_models(models_summary_pointwise)),
+  tar_target(models_evaluation, evaluate_models(models_summary_pointwise_list)),
+  
+  
+  
   
   
   # SAVE OUTPUTS ----
-  tar_target(models_output_fp, save_models(exp_design, 
-                                           models_setup, 
-                                           models_output,
-                                           models_summary_pointwise,
+  tar_target(models_output_fp, save_models(exp_design,
+                                           models_setup,
+                                           models_output_list,
+                                           models_summary_pointwise_list,
                                            models_comparison,
                                            models_evaluation,
                                            "output/calib/",
-                                           "out_20251202_clean.Rdata")),
+                                           "out_20251218_dbhXbatot.Rdata")),
+  
+  
+  # COMPUTE OUTPUT VARIABLES ----
+  
+  ## Create parameters table ----
+  tar_target(output_params, get_output_params(models_output_list,
+                                              n_analysis = 15000,
+                                              thinning = 15)),
+  
+  
+  ## Compute tree-level variables ---- 
+  tar_target(data_output_tree, compute_output_tree(data_calib,
+                                                   models_setup,
+                                                   output_params,
+                                                   LAD_CONTROL)),
+  
+  
+  ## Compute stand-level variables ---- 
+  tar_target(data_output_stand, compute_output_stand(data_calib,
+                                                     models_setup,
+                                                     output_params,
+                                                     LAD_CONTROL)),
+  
+  
+  ## Apply SamsaRalight on output stands ----
+  tar_target(data_output_light_list, compute_output_light(data_calib,
+                                                          data_rad,
+                                                          init_db$plots,
+                                                          models_setup,
+                                                          output_params,
+                                                          LAD_CONTROL)),
+
+  tar_target(data_output_light, bind_output_light(data_output_light_list)),
   
   NULL
 )

@@ -341,211 +341,286 @@ The mean LAD over all sensors that converged was about `r round(mean(output_lad_
 
 # Bayesian calibration
 
+<!-- # ```{r} -->
+<!-- # load("output/calib/out_20251202_clean.Rdata") -->
+<!-- # ``` -->
+
+
+<!-- ## Observe the effect of sensors filtering -->
+
+<!-- A first Bayesian approach would be to also fit a mean LAD value on the sensors that converged with the previous method, by considering a hierarchical random effect (site into origin, mandatory according to the structure our our dataset). -->
+
+<!-- The model can be written as: -->
+<!-- $LAD_{p} = a_{0} + a_{0,p} + \epsilon$, where $a_{0}$ is the LAD intercept and $a_{0,p}$ is a random hierarchical site effect, nested within an origin effect (4 origins of the plots within UCLouvain, INRAe, Cloture and IRRES). -->
+
+
+<!-- ```{r} -->
+<!-- mods_exp1 <- c("1_1", "1_2") -->
+<!-- out_exp1 <- out_list$output[mods_exp1]   -->
+<!-- ``` -->
+
+
+<!-- ### Computation time -->
+
+<!-- ```{r} -->
+<!-- dplyr::left_join( -->
+
+<!--   # Experimental design -->
+<!--   out_list$exp_design %>%  -->
+<!--     dplyr::filter(id_simu %in% mods_exp1), -->
+
+<!--   # Comutation times -->
+<!--   out_exp1 %>%  -->
+<!--     purrr::map(~data.frame(time_hours = as.numeric(.x$computation_time,  -->
+<!--                                              units = "hours"))) %>%  -->
+<!--     dplyr::bind_rows(.id = "id_simu"), -->
+
+<!--   by = "id_simu" -->
+<!-- ) %>%  -->
+
+<!--   dplyr::select(id_mod, n_chains, n_iterations,  -->
+<!--                 filter_sensors,  -->
+<!--                 time_hours) %>%  -->
+<!--   as.data.frame() -->
+<!-- ``` -->
+
+
+<!-- ### Compare models and intercept predictions -->
+
+<!-- ```{r plot_exp1} -->
+<!-- # Get models evalution  outputs  -->
+<!-- eval_exp1_list <- out_list$evaluation$indicators[mods_exp1]  -->
+
+<!-- # Parameters -->
+<!-- n_analysis_exp1 <- 5000 -->
+<!-- thinning_exp1 <- 1 -->
+
+
+
+<!-- # Compute mean LAD distribution -->
+<!-- lad_exp1 <- out_exp1 %>%  -->
+<!--   purrr::map(~.x$outputs %>%  -->
+<!--                getSample(start = nrow(.x$outputs$chain[[1]]) - n_analysis_exp1,  -->
+<!--                          end = NULL,  -->
+<!--                          thin = thinning_exp1, -->
+<!--                          coda = TRUE) %>% -->
+<!--                purrr::map(~as.data.frame(.x) %>% -->
+<!--                             dplyr::mutate(iteration = row_number()) %>% -->
+<!--                             dplyr::relocate(iteration)) %>% -->
+<!--                dplyr::bind_rows(.id = "subchain")) %>% -->
+<!--   dplyr::bind_rows(.id = "id_simu") %>%  -->
+<!--   dplyr::mutate( -->
+<!--     sigma = exp(sigma_log), -->
+<!--     lad = exp(intercept + 0.5*sigma^2) # do not forget to add variance term, as here we compute the mean of a log-normal   -->
+<!--   ) %>%  -->
+<!--   dplyr::left_join(out_list$exp_design, by = "id_simu") -->
+
+
+
+<!-- # Compute LAD summaries -->
+<!-- summaries_exp1 <- lad_exp1 %>%  -->
+<!--   dplyr::group_by(id_simu, filter_sensors) %>%  -->
+<!--   dplyr::summarise( -->
+<!--     lad_qt025 = quantile(lad, 0.025), -->
+<!--     lad_median = quantile(lad, 0.5), -->
+<!--     lad_qt975 = quantile(lad, 0.975) -->
+<!--   ) %>%  -->
+<!--   dplyr::ungroup() -->
+
+<!-- print(summaries_exp1 %>% as.data.frame()) -->
+
+
+
+<!-- # Create plot label -->
+<!-- summaries_exp1 <- summaries_exp1 %>%  -->
+<!--   dplyr::mutate(mod_label = paste0(filter_sensors, " | ", round(lad_median, 3))) -->
+
+<!-- lad_exp1 <- lad_exp1 %>%  -->
+<!--   dplyr::left_join(summaries_exp1, by = "id_simu") -->
+
+<!-- eval_exp1 <- eval_exp1_list %>% -->
+<!--   dplyr::bind_rows(.id = "id_simu") %>%  -->
+<!--   dplyr::left_join(summaries_exp1, by = "id_simu") -->
+
+
+<!-- # Compute summaries of MAE and RMSE -->
+<!-- summaries_eval_exp1 <- eval_exp1 %>%  -->
+<!--   dplyr::group_by(id_simu, filter_sensors) %>%  -->
+<!--   dplyr::summarise( -->
+
+<!--     mae_qt025 = quantile(MAE, 0.025), -->
+<!--     mae_median = quantile(MAE, 0.5), -->
+<!--     mae_qt975 = quantile(MAE, 0.975), -->
+
+<!--     rmse_qt025 = quantile(RMSE, 0.025), -->
+<!--     rmse_median = quantile(RMSE, 0.5), -->
+<!--     rmse_qt975 = quantile(RMSE, 0.975) -->
+
+<!--   ) %>%  -->
+<!--   dplyr::ungroup() -->
+
+<!-- print(summaries_eval_exp1 %>% as.data.frame()) -->
+
+
+
+<!-- # Plot summaries and distribution of LAD -->
+<!-- plot_exp1_lad <- lad_exp1 %>%  -->
+
+<!--   ggplot(aes(x = lad, color = mod_label)) + -->
+
+<!--   geom_vline(data = summaries_exp1,  -->
+<!--              aes(xintercept = lad_qt025, color = mod_label), -->
+<!--              linewidth = 0.9, linetype = "dotted", alpha = 0.7) + -->
+<!--   geom_vline(data = summaries_exp1,  -->
+<!--              aes(xintercept = lad_median, color = mod_label), -->
+<!--              linewidth = 0.9, linetype = "dashed", alpha = 0.7) + -->
+<!--   geom_vline(data = summaries_exp1,  -->
+<!--              aes(xintercept = lad_qt975, color = mod_label), -->
+<!--              linewidth = 0.9, linetype = "dotted", alpha = 0.7) + -->
+
+<!--   geom_density(linewidth = 0.5) + -->
+
+<!--   xlab("Intercept prediction") + -->
+<!--   ylab("density") + -->
+<!--   labs(title = "Effect of sensors filtering based on the preliminary analysis", -->
+<!--        subtitle = "calibration of a single log(LAD) with site/origin random effects", -->
+<!--        color = "filter sensors | median LAD") + -->
+
+<!--   scale_color_manual(values = c("salmon", "forestgreen")) + -->
+<!--   theme_bw() + -->
+<!--   theme(plot.title = element_text(hjust = 0.5), -->
+<!--         plot.subtitle = element_text(hjust = 0.5), -->
+<!--         legend.position = "top") + -->
+<!--   guides(colour = guide_legend(title.position = "top", title.hjust = 0.5)) -->
+
+
+
+<!-- # Get the legend and titles and remove it from first graphic -->
+<!-- plot_exp1_title <- cowplot::get_title(plot_exp1_lad) -->
+<!-- plot_exp1_subtitle <- cowplot::get_subtitle(plot_exp1_lad) -->
+<!-- plot_exp1_legend <- cowplot::get_legend(plot_exp1_lad) -->
+
+<!-- plot_exp1_lad <- plot_exp1_lad +  -->
+<!--   theme(legend.position = "none") + -->
+<!--   labs(title = NULL, subtitle = NULL) -->
+
+
+
+
+<!-- # Plot the MAE -->
+<!-- plot_exp1_mae <- eval_exp1 %>%  -->
+
+<!--   ggplot(aes(x = MAE, color = mod_label)) + -->
+<!--   geom_density(linewidth = 0.5) + -->
+
+<!--   xlab("Mean Absolute Error between PACLs") + -->
+<!--   ylab("density") + -->
+<!--   scale_color_manual(values = c("salmon", "forestgreen")) + -->
+<!--   theme_bw() + -->
+<!--   theme(legend.position = "none") -->
+
+
+
+<!-- # Combine graphs -->
+<!-- cowplot::plot_grid( -->
+
+<!--   plot_exp1_title, -->
+<!--   plot_exp1_subtitle, -->
+
+<!--   plot_exp1_legend, -->
+
+<!--   cowplot::plot_grid( -->
+<!--     plot_exp1_lad, plot_exp1_mae, -->
+<!--     nrow = 1, rel_widths = c(1, 1) -->
+<!--   ), -->
+
+<!--   ncol = 1, rel_heights = c(1, 1, 2, 12) -->
+<!-- ) -->
+<!-- ``` -->
+
+
+<!-- ### Observe convergence -->
+
+<!-- ```{r} -->
+<!-- trace_exp1 <- out_exp1 %>%  -->
+<!--   purrr::map(~.x$outputs %>%  -->
+<!--                getSample(start = 0,  -->
+<!--                          end = NULL,  -->
+<!--                          thin = 1, -->
+<!--                          coda = TRUE) %>% -->
+<!--                purrr::map(~as.data.frame(.x) %>% -->
+<!--                             dplyr::mutate(iteration = row_number()) %>% -->
+<!--                             dplyr::relocate(iteration)) %>% -->
+<!--                dplyr::bind_rows(.id = "subchain")) %>% -->
+<!--   dplyr::bind_rows(.id = "id_simu") %>%  -->
+
+<!--   tidyr::pivot_longer(!c(id_simu, subchain, iteration), -->
+<!--                       names_to = "parameter", -->
+<!--                       values_to = "estimate") %>%  -->
+
+<!--   dplyr::left_join(out_list$exp_design, by = "id_simu") %>%  -->
+<!--   dplyr::mutate( -->
+<!--     sensor_label = ifelse(filter_sensors, "WITH filter", "NO filter") -->
+<!--   ) %>%  -->
+
+<!--   dplyr::filter(parameter %in% c("intercept", "sigma_log", "sigma_origin_log", "sigma_site_log")) -->
+
+
+<!-- trace_exp1 %>%  -->
+
+<!--   ggplot(aes(y = estimate, x = iteration, color = subchain)) + -->
+<!--   facet_grid(cols = vars(parameter), rows = vars(sensor_label), -->
+<!--              scales = "free") + -->
+
+<!--   geom_line() + -->
+<!--   geom_vline(xintercept = max(trace_exp1$iteration) - n_analysis_exp1, -->
+<!--              linetype = "dashed") + -->
+
+<!--   labs(title = "Convergence of the models with or without sensors filtering", -->
+<!--        subtitle = "calibration of a single log(LAD) without site/origin random effects") + -->
+
+<!--   theme_bw() + -->
+<!--   theme(plot.title = element_text(hjust = 0.5), -->
+<!--         plot.subtitle = element_text(hjust = 0.5)) -->
+<!-- ``` -->
+
+
+
+## Clean model: species X DBH with covariance
+
+100,000 iterations and 3 chains
+
 ```{r}
-load("output/calib/out_20251202_clean.Rdata")
-```
+load("output/calib/out_20251207_completeModel.Rdata")
 
+# Parameters
+n_analysis_clean <- 1000
+thinning_clean <- 1
 
-## Observe the effect of sensors filtering
-
-A first Bayesian approach would be to also fit a mean LAD value on the sensors that converged with the previous method, by considering a hierarchical random effect (site into origin, mandatory according to the structure our our dataset).
-
-The model can be written as:
-$LAD_{p} = a_{0} + a_{0,p} + \epsilon$, where $a_{0}$ is the LAD intercept and $a_{0,p}$ is a random hierarchical site effect, nested within an origin effect (4 origins of the plots within UCLouvain, INRAe, Cloture and IRRES).
-
-
-```{r}
-mods_exp1 <- c("1_1", "1_2")
-out_exp1 <- out_list$output[mods_exp1]  
+out_list$exp_design
 ```
 
 
 ### Computation time
 
 ```{r}
-dplyr::left_join(
-  
-  # Experimental design
-  out_list$exp_design %>% 
-    dplyr::filter(id_simu %in% mods_exp1),
-  
-  # Comutation times
-  out_exp1 %>% 
-    purrr::map(~data.frame(time_hours = as.numeric(.x$computation_time, 
-                                             units = "hours"))) %>% 
-    dplyr::bind_rows(.id = "id_simu"),
-  
-  by = "id_simu"
-) %>% 
-  
-  dplyr::select(id_mod, n_chains, n_iterations, 
-                filter_sensors, 
-                time_hours) %>% 
+out_list$output %>% 
+  purrr::map(~data.frame(
+    chain = .x$i_chain,
+    time_hours = as.numeric(.x$computation_time, 
+                            units = "hours"))) %>% 
+  dplyr::bind_rows() %>% 
   as.data.frame()
-```
-
-
-### Compare models and intercept predictions
-
-```{r plot_exp1}
-# Get models evalution  outputs 
-eval_exp1_list <- out_list$evaluation$indicators[mods_exp1] 
-
-
-
-# Parameters
-n_analysis_exp1 <- 5000
-thinning_exp1 <- 1
-
-
-
-# Compute mean LAD distribution
-lad_exp1 <- out_exp1 %>% 
-  purrr::map(~.x$outputs %>% 
-               getSample(start = nrow(.x$outputs$chain[[1]]) - n_analysis_exp1, 
-                         end = NULL, 
-                         thin = thinning_exp1,
-                         coda = TRUE) %>%
-               purrr::map(~as.data.frame(.x) %>%
-                            dplyr::mutate(iteration = row_number()) %>%
-                            dplyr::relocate(iteration)) %>%
-               dplyr::bind_rows(.id = "subchain")) %>%
-  dplyr::bind_rows(.id = "id_simu") %>% 
-  dplyr::mutate(
-    sigma = exp(sigma_log),
-    lad = exp(intercept + 0.5*sigma^2) # do not forget to add variance term, as here we compute the mean of a log-normal  
-  ) %>% 
-  dplyr::left_join(out_list$exp_design, by = "id_simu")
-
-
-
-# Compute LAD summaries
-summaries_exp1 <- lad_exp1 %>% 
-  dplyr::group_by(id_simu, filter_sensors) %>% 
-  dplyr::summarise(
-    lad_qt025 = quantile(lad, 0.025),
-    lad_median = quantile(lad, 0.5),
-    lad_qt975 = quantile(lad, 0.975)
-  ) %>% 
-  dplyr::ungroup()
-
-print(summaries_exp1 %>% as.data.frame())
-
-
-
-# Create plot label
-summaries_exp1 <- summaries_exp1 %>% 
-  dplyr::mutate(mod_label = paste0(filter_sensors, " | ", round(lad_median, 3)))
-
-lad_exp1 <- lad_exp1 %>% 
-  dplyr::left_join(summaries_exp1, by = "id_simu")
-
-eval_exp1 <- eval_exp1_list %>%
-  dplyr::bind_rows(.id = "id_simu") %>% 
-  dplyr::left_join(summaries_exp1, by = "id_simu")
-
-
-# Compute summaries of MAE and RMSE
-summaries_eval_exp1 <- eval_exp1 %>% 
-  dplyr::group_by(id_simu, filter_sensors) %>% 
-  dplyr::summarise(
-    
-    mae_qt025 = quantile(MAE, 0.025),
-    mae_median = quantile(MAE, 0.5),
-    mae_qt975 = quantile(MAE, 0.975),
-    
-    rmse_qt025 = quantile(RMSE, 0.025),
-    rmse_median = quantile(RMSE, 0.5),
-    rmse_qt975 = quantile(RMSE, 0.975)
-    
-  ) %>% 
-  dplyr::ungroup()
-
-print(summaries_eval_exp1 %>% as.data.frame())
-
-
-
-# Plot summaries and distribution of LAD
-plot_exp1_lad <- lad_exp1 %>% 
-
-  ggplot(aes(x = lad, color = mod_label)) +
-  
-  geom_vline(data = summaries_exp1, 
-             aes(xintercept = lad_qt025, color = mod_label),
-             linewidth = 0.9, linetype = "dotted", alpha = 0.7) +
-  geom_vline(data = summaries_exp1, 
-             aes(xintercept = lad_median, color = mod_label),
-             linewidth = 0.9, linetype = "dashed", alpha = 0.7) +
-  geom_vline(data = summaries_exp1, 
-             aes(xintercept = lad_qt975, color = mod_label),
-             linewidth = 0.9, linetype = "dotted", alpha = 0.7) +
-  
-  geom_density(linewidth = 0.5) +
-  
-  xlab("Intercept prediction") +
-  ylab("density") +
-  labs(title = "Effect of sensors filtering based on the preliminary analysis",
-       subtitle = "calibration of a single log(LAD) with site/origin random effects",
-       color = "filter sensors | median LAD") +
-  
-  scale_color_manual(values = c("salmon", "forestgreen")) +
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5),
-        legend.position = "top") +
-  guides(colour = guide_legend(title.position = "top", title.hjust = 0.5))
-
-  
-
-# Get the legend and titles and remove it from first graphic
-plot_exp1_title <- cowplot::get_title(plot_exp1_lad)
-plot_exp1_subtitle <- cowplot::get_subtitle(plot_exp1_lad)
-plot_exp1_legend <- cowplot::get_legend(plot_exp1_lad)
-
-plot_exp1_lad <- plot_exp1_lad + 
-  theme(legend.position = "none") +
-  labs(title = NULL, subtitle = NULL)
-
-
-
-
-# Plot the MAE
-plot_exp1_mae <- eval_exp1 %>% 
-
-  ggplot(aes(x = MAE, color = mod_label)) +
-  geom_density(linewidth = 0.5) +
-
-  xlab("Mean Absolute Error between PACLs") +
-  ylab("density") +
-  scale_color_manual(values = c("salmon", "forestgreen")) +
-  theme_bw() +
-  theme(legend.position = "none")
-
-
-
-# Combine graphs
-cowplot::plot_grid(
-  
-  plot_exp1_title,
-  plot_exp1_subtitle,
-  
-  plot_exp1_legend,
-  
-  cowplot::plot_grid(
-    plot_exp1_lad, plot_exp1_mae,
-    nrow = 1, rel_widths = c(1, 1)
-  ),
-  
-  ncol = 1, rel_heights = c(1, 1, 2, 12)
-)
 ```
 
 
 ### Observe convergence
 
 ```{r}
-trace_exp1 <- out_exp1 %>% 
-  purrr::map(~.x$outputs %>% 
+trace_clean <- out_list$output %>% 
+  purrr::map(~.x$output) %>% 
+  setNames(out_list$output %>% purrr::map(~.x$i_chain)) %>% 
+  purrr::map(~.x %>% 
                getSample(start = 0, 
                          end = NULL, 
                          thin = 1,
@@ -554,614 +629,122 @@ trace_exp1 <- out_exp1 %>%
                             dplyr::mutate(iteration = row_number()) %>%
                             dplyr::relocate(iteration)) %>%
                dplyr::bind_rows(.id = "subchain")) %>%
-  dplyr::bind_rows(.id = "id_simu") %>% 
-  
-  tidyr::pivot_longer(!c(id_simu, subchain, iteration),
-                      names_to = "parameter",
-                      values_to = "estimate") %>% 
-  
-  dplyr::left_join(out_list$exp_design, by = "id_simu") %>% 
-  dplyr::mutate(
-    sensor_label = ifelse(filter_sensors, "WITH filter", "NO filter")
-  ) %>% 
-  
-  dplyr::filter(parameter %in% c("intercept", "sigma_log", "sigma_origin_log", "sigma_site_log"))
- 
-  
-trace_exp1 %>% 
-  
-  ggplot(aes(y = estimate, x = iteration, color = subchain)) +
-  facet_grid(cols = vars(parameter), rows = vars(sensor_label),
-             scales = "free") +
-  
-  geom_line() +
-  geom_vline(xintercept = max(trace_exp1$iteration) - n_analysis_exp1,
-             linetype = "dashed") +
-  
-  labs(title = "Convergence of the models with or without sensors filtering",
-       subtitle = "calibration of a single log(LAD) without site/origin random effects") +
-  
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5))
-```
-
-
-## Is there an effect of species and tree diameter ?
-
-
-```{r}
-mods_exp3 <- c("1_2" = "control", 
-               "2_1" = "dbh", 
-               "3_1" = "species", 
-               "3_2" = "dbh + species", 
-               "4_1" = "dbh*species", 
-               "4_2" = "dbh*species with covar")
-
-out_exp3 <- out_list$output[names(mods_exp3)]  
-
-mods_exp3
-
-
-# Parameters
-n_analysis_exp3 <- 1000
-thinning_exp3 <- 1
-```
-
-
-### Computation time
-
-```{r}
-dplyr::left_join(
-  
-  # Experimental design
-  out_list$exp_design %>% 
-    dplyr::filter(id_simu %in% names(mods_exp3)),
-  
-  # Comutation times
-  out_exp3 %>% 
-    purrr::map(~data.frame(time_hours = as.numeric(.x$computation_time, 
-                                             units = "hours"))) %>% 
-    dplyr::bind_rows(.id = "id_simu"),
-  
-  by = "id_simu"
-) %>% 
-  
-  dplyr::select(id_simu, n_chains, n_iterations, 
-                intercept_per_sp, dbh_effect, dbh_per_sp, consider_covariance, 
-                time_hours) %>% 
-  as.data.frame()
-```
-
-
-
-### Compare models
-
-```{r}
-# Get models evalution and comparison outputs 
-comp_exp3_list <- out_list$comparison[names(mods_exp3)] 
-eval_exp3_list <- out_list$evaluation$indicators[names(mods_exp3)] 
-
-
-
-# Compute the LOOIC
-looic_exp3 <- comp_exp3_list %>% 
-  purrr::map(
-    function(x) {
-      out <- x$LOOCV["looic",]
-      str <- paste0(round(out[["Estimate"]], 2), 
-                    " (SE ",
-                    round(out[["SE"]], 2),
-                    ")")
-      data.frame(looic = str)
-    }
-  ) %>% 
-  dplyr::bind_rows(.id = "id_simu")
-
-
-# Create the data for MAE/RMSE
-eval_exp3 <- eval_exp3_list %>%
-  dplyr::bind_rows(.id = "id_simu") %>% 
-  dplyr::left_join(out_list$exp_design, by = "id_simu")
-
-
-# Compute summaries of MAE and RMSE
-summaries_eval_exp3 <- eval_exp3 %>% 
-  dplyr::mutate(str_mod = mods_exp3[id_simu]) %>% 
-  dplyr::group_by(id_simu, str_mod, 
-                  intercept_per_sp, dbh_effect, dbh_per_sp, consider_covariance) %>% 
-  dplyr::summarise(
-    
-    mae_qt025 = quantile(MAE, 0.025),
-    mae_median = quantile(MAE, 0.5),
-    mae_qt975 = quantile(MAE, 0.975),
-    
-    rmse_qt025 = quantile(RMSE, 0.025),
-    rmse_median = quantile(RMSE, 0.5),
-    rmse_qt975 = quantile(RMSE, 0.975)
-    
-  ) %>% 
-  dplyr::ungroup() %>% 
-  dplyr::left_join(looic_exp3, by = "id_simu")
-
-
-print(summaries_eval_exp3 %>% as.data.frame())
-
-
-# Plot the MAE
-eval_exp3 %>% 
-  dplyr::mutate(
-    str_mod = mods_exp3[id_simu]
-  ) %>%
-
-  ggplot(aes(x = MAE, color = str_mod)) +
-  geom_density(linewidth = 0.5) +
-  
-  geom_vline(data = summaries_eval_exp3, 
-             mapping = aes(xintercept = mae_median,
-                           color = str_mod),
-             linetype = "dotted",
-             linewidth = 1.05) +
-
-  xlab("Mean Absolute Error between PACLs") +
-  ylab("density") +
-  labs(title = "Compare the forms of DBH effect",
-       subtitle = "calibration of log(LAD)",
-       colour = "DBH models") +
-  
-  # scale_color_manual(values = c("coral", "cadetblue")) +
-  theme_bw() +
-  theme(legend.position = "right",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5))
-```
-
-
-### Observe convergence
-
-```{r}
-trace_exp3 <- out_exp3 %>% 
-  purrr::map(~.x$outputs %>% 
-               getSample(start = 0, 
-                         end = NULL, 
-                         thin = 1,
-                         coda = TRUE) %>%
-               purrr::map(~as.data.frame(.x) %>%
-                            dplyr::mutate(iteration = row_number()) %>%
-                            dplyr::relocate(iteration)) %>%
-               dplyr::bind_rows(.id = "subchain")) %>%
-  dplyr::bind_rows(.id = "id_simu") %>% 
+  dplyr::bind_rows(.id = "chain") %>% 
   
   # Called the non species-specific model a mean species 
-  dplyr::select(id_simu, subchain, iteration,
+  dplyr::select(chain, subchain, iteration,
                 sigma_log, sigma_site_log, sigma_origin_log,
                 sigma_intercept_log, sigma_dbh_log,
-                mean_intercept, intercept,
-                mean_dbh, dbh,
-                rho_raw,
+                mean_intercept, mean_dbh, rho_raw,
                 contains("z_intercept"), 
                 contains("z_dbh")) %>% 
-  tidyr::pivot_longer(!c(id_simu, subchain, iteration),
+  tidyr::pivot_longer(!c(chain, subchain, iteration),
                       names_to = "parameter",
                       values_to = "estimate")
 
 
-for (id in names(mods_exp3)) {
+# Model sigmas
+trace_clean %>% 
   
-  # Get model design 
-  mod <- out_list$exp_design %>% 
-    dplyr::filter(id_simu == id)
+  dplyr::filter(parameter %in% c("sigma_log", "sigma_site_log", "sigma_origin_log")) %>% 
   
-  # Model sigmas
-  print(
-    
-    trace_exp3 %>% 
-      
-      dplyr::filter(id_simu == mod$id_simu,
-                    parameter %in% c("sigma_log", "sigma_site_log", "sigma_origin_log")) %>% 
-      
-      ggplot(aes(y = estimate, x = iteration, color = subchain)) +
-      facet_wrap(~parameter, scales = "free") +
-      geom_line() +
-      geom_vline(xintercept = max(trace_exp3$iteration) - n_analysis_exp3,
-                 linetype = "dashed") +
-      
-      labs(title = "Convergence of the sigma parameters",
-           subtitle = mods_exp3[[mod$id_simu]]) +
-      
-      theme_bw() +
-      theme(plot.title = element_text(hjust = 0.5),
-            plot.subtitle = element_text(hjust = 0.5))
-    
-  )
-  
-  # Model intercepts
-  print(
-    
-    trace_exp3 %>% 
-      
-      dplyr::filter(id_simu == mod$id_simu,
-                    grepl("intercept", parameter)) %>% 
-      dplyr::mutate(parameter = gsub("intercept.", "", parameter),
-                    parameter = gsub("_intercept", "", parameter)) %>% 
-      
-      ggplot(aes(y = estimate, x = iteration, color = subchain)) +
-      facet_wrap(~parameter, scales = "free") +
-      geom_line() +
-      
-      geom_vline(xintercept = max(trace_exp3$iteration) - n_analysis_exp3,
-                 linetype = "dashed") +
-      
-      labs(title = "Convergence of the intercept parameters",
-           subtitle = mods_exp3[[mod$id_simu]]) +
-      
-      theme_bw() +
-      theme(plot.title = element_text(hjust = 0.5),
-            plot.subtitle = element_text(hjust = 0.5))
-    
-  )
-    
-    # Model dbh
-    print(
-    
-    trace_exp3 %>% 
-      
-      dplyr::filter(id_simu == mod$id_simu,
-                    grepl("dbh", parameter)) %>% 
-      dplyr::mutate(parameter = gsub("dbh.", "", parameter),
-                    parameter = gsub("_dbh", "", parameter)) %>% 
-      
-      ggplot(aes(y = estimate, x = iteration, color = subchain)) +
-      facet_wrap(~parameter, scales = "free") +
-      geom_line() +
-      
-      geom_vline(xintercept = max(trace_exp3$iteration) - n_analysis_exp3,
-                 linetype = "dashed") +
-      geom_hline(yintercept = 0) +
-      
-      labs(title = "Convergence of the dbh parameters",,
-           subtitle = mods_exp3[[mod$id_simu]]) +
-      
-      theme_bw() +
-      theme(plot.title = element_text(hjust = 0.5),
-            plot.subtitle = element_text(hjust = 0.5))
-    
-  )
-}
-```
-
-### LAD predictions
-
-#### For a mean species at a mean DBH
-
-```{r}
-# Compute mean LAD distribution
-lad_exp3_meandbh <- out_exp3 %>% 
-  purrr::map(~.x$outputs %>% 
-               getSample(start = nrow(.x$outputs$chain[[1]]) - n_analysis_exp3, 
-                         end = NULL, 
-                         thin = thinning_exp3,
-                         coda = TRUE) %>%
-               purrr::map(~as.data.frame(.x) %>%
-                            dplyr::mutate(iteration = row_number()) %>%
-                            dplyr::relocate(iteration)) %>%
-               dplyr::bind_rows(.id = "subchain")) %>%
-  dplyr::bind_rows(.id = "id_simu") %>% 
-  
-  # Compute the mean LAD (either the intercept if no species-specific LAD, 
-  # or the mean species otherwise) : intercept and mean_intercept are inversely at NA
-  dplyr::select(id_simu, subchain, iteration,
-                sigma_log, sigma_site_log, sigma_origin_log,
-                sigma_intercept_log, sigma_dbh_log,
-                intercept_noSP = intercept, intercept_meanSP = mean_intercept) %>% 
-  
-  dplyr::mutate(intercept = coalesce(intercept_noSP, intercept_meanSP)) %>% 
-  
-  
-  # Replace NA of random effects by 0 (adding a 0 variance term do nothing)
-  dplyr::mutate(
-    sigma_mod = ifelse(is.na(sigma_log), 0, exp(sigma_log)),
-    sigma_site = ifelse(is.na(sigma_site_log), 0, exp(sigma_site_log)),
-    sigma_origin = ifelse(is.na(sigma_origin_log), 0, exp(sigma_origin_log)),
-    sigma_intercept = ifelse(is.na(sigma_intercept_log), 0, exp(sigma_intercept_log)),
-    sigma_dbh = ifelse(is.na(sigma_dbh_log), 0, exp(sigma_dbh_log))
-  ) %>%
-  
-  # Compute variance (do not forget that we fit a log_normal LAD, thus consider variance term when back transforming)
-  dplyr::mutate(
-    variance_sum = sigma_mod^2 + sigma_site^2 + sigma_origin^2 + sigma_intercept^2 + sigma_dbh^2,
-    
-    lad = exp(intercept + 0.5*variance_sum)
-  ) %>%
-  
-  # Add modalities
-  dplyr::mutate(str_mod = mods_exp3[id_simu])
-
-
-# Compute LAD summaries
-summaries_exp3_meandbh <- lad_exp3_meandbh %>% 
-  dplyr::group_by(str_mod) %>% 
-  dplyr::summarise(
-    lad_qt025 = quantile(lad, 0.025),
-    lad_median = quantile(lad, 0.5),
-    lad_qt975 = quantile(lad, 0.975)
-  ) %>% 
-  dplyr::ungroup() %>% 
-  dplyr::arrange(lad_median)
-
-print(summaries_exp3_meandbh %>% 
-        as.data.frame())
-
-
-# Plot LAD distribution for a mean species by models
-lad_exp3_meandbh %>% 
-
-  ggplot(aes(x = lad, color = str_mod)) +
-  geom_density(linewidth = 0.5) +
-
-  
-  geom_vline(data = summaries_exp3_meandbh, 
-             mapping = aes(xintercept = lad_median,
-                           color = str_mod),
-             linetype = "dotted",
-             linewidth = 1.05) +
-  
-  xlab("LAD distribution") +
-  ylab("density") +
-  labs(title = "Mean LAD prediction for all models",
-       subtitle = "for a mean species at a mean DBH (28cm)",
-       colour = "models") +
-  
-  theme_bw() +
-  theme(legend.position = "right",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5))
-```
-
-#### Effect of DBH on mean LAD
-
-```{r}
-# Compute mean LAD distribution
-params_exp3_dbh <- out_exp3 %>% 
-  purrr::map(~.x$outputs %>% 
-               getSample(start = nrow(.x$outputs$chain[[1]]) - n_analysis_exp3, 
-                         end = NULL, 
-                         thin = thinning_exp3,
-                         coda = TRUE) %>%
-               purrr::map(~as.data.frame(.x) %>%
-                            dplyr::mutate(iteration = row_number()) %>%
-                            dplyr::relocate(iteration)) %>%
-               dplyr::bind_rows(.id = "subchain")) %>%
-  dplyr::bind_rows(.id = "id_simu") %>% 
-  
-  # Compute the mean LAD (either the intercept if no species-specific LAD, 
-  # or the mean species otherwise) : intercept and mean_intercept are inversely at NA
-  dplyr::select(id_simu, subchain, iteration,
-                sigma_log, sigma_site_log, sigma_origin_log,
-                sigma_intercept_log, sigma_dbh_log,
-                intercept_noSP = intercept, intercept_meanSP = mean_intercept,
-                dbh_noSP = dbh, dbh_meanSP = mean_dbh) %>% 
-  
-  dplyr::mutate(intercept = coalesce(intercept_noSP, intercept_meanSP),
-                param_dbh = coalesce(dbh_noSP, dbh_meanSP),
-                param_dbh = ifelse(is.na(param_dbh), 0, param_dbh)) %>% 
-  
-  # Replace NA of random effects by 0 (adding a 0 variance term do nothing)
-  dplyr::mutate(
-    sigma_mod = ifelse(is.na(sigma_log), 0, exp(sigma_log)),
-    sigma_site = ifelse(is.na(sigma_site_log), 0, exp(sigma_site_log)),
-    sigma_origin = ifelse(is.na(sigma_origin_log), 0, exp(sigma_origin_log)),
-    sigma_intercept = ifelse(is.na(sigma_intercept_log), 0, exp(sigma_intercept_log)),
-    sigma_dbh = ifelse(is.na(sigma_dbh_log), 0, exp(sigma_dbh_log))
-  ) %>%
-  
-  # Compute variance (do not forget that we fit a log_normal LAD, thus consider variance term when back transforming)
-  dplyr::mutate(
-    variance_sum = sigma_mod^2 + sigma_site^2 + sigma_origin^2 + sigma_intercept^2 + sigma_dbh^2
-  ) %>%
-  
-  # Add modalities
-  dplyr::mutate(str_mod = mods_exp3[id_simu])
-  
-
-lad_exp3_dbh <- tidyr::crossing(
-  params_exp3_dbh,
-  dbh_cm = seq(
-    quantile(out_list$setup$`1_2`$dbh_vect, 0.025),
-    quantile(out_list$setup$`1_2`$dbh_vect, 0.975),
-    length.out = 1000
-  )
-) %>% 
-  
-  dplyr::mutate(
-    dbh_std = (dbh_cm - out_list$setup$`1_2`$dbh_mean) / out_list$setup$`1_2`$dbh_sd
-  ) %>% 
-  
-  dplyr::mutate(
-    lad = exp(intercept + dbh_std * param_dbh + 0.5*variance_sum)
-  )
-
-# Plot LAD prediction along dbh for a mean species gradient for each model 
-lad_exp3_dbh %>% 
-
-  dplyr::group_by(str_mod, subchain, dbh_cm) %>% 
-  dplyr::summarise(
-    lad_median = median(lad),
-    lad_lower = quantile(lad, 0.025),
-    lad_upper = quantile(lad, 0.975)
-  ) %>% 
-  
-  ggplot(aes(y = lad_median, x = dbh_cm, 
-             color = subchain)) +
-  facet_wrap(~str_mod) +
-  
+  ggplot(aes(y = estimate, x = iteration, 
+             color = chain, linetype = subchain)) +
+  facet_wrap(~parameter, scales = "free") +
   geom_line() +
-  geom_ribbon(aes(ymin = lad_lower, ymax = lad_upper, fill = subchain),
-              color = NA,
-              alpha = 0.4) +
+  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean,
+             linetype = "dashed") +
   
-  xlab("DBH (in cm)") +
-  ylab("LAD prediction") +
-  labs(title = "LAD models along a DBH gradient",
-       subtitle = "for a mean species between 2.5% and 97.5% quantiles of observed DBH",
-       colour = "subchain") +
+  labs(title = "Convergence of the sigma parameters",
+       subtitle = "species*dbh with covariance") +
   
   theme_bw() +
-  theme(legend.position = "right",
-        plot.title = element_text(hjust = 0.5),
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+
+
+# Model intercepts
+trace_clean %>% 
+  
+  dplyr::filter(grepl("intercept", parameter)) %>% 
+  dplyr::mutate(parameter = gsub("intercept.", "", parameter),
+                parameter = gsub("_intercept", "", parameter)) %>% 
+  
+  ggplot(aes(y = estimate, x = iteration, 
+             color = chain, linetype = subchain)) +
+  facet_wrap(~parameter, scales = "free") +
+  geom_line() +
+  
+  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean,
+             linetype = "dashed") +
+  
+  labs(title = "Convergence of the intercept parameters",
+       subtitle = "species*dbh with covariance") +
+  
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+
+
+# Model dbh
+trace_clean %>% 
+  
+  dplyr::filter(grepl("dbh", parameter)) %>% 
+  dplyr::mutate(parameter = gsub("dbh.", "", parameter),
+                parameter = gsub("_dbh", "", parameter)) %>% 
+  
+  ggplot(aes(y = estimate, x = iteration, 
+             color = chain, linetype = subchain)) +
+  facet_wrap(~parameter, scales = "free") +
+  geom_line() +
+  
+  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean,
+             linetype = "dashed") +
+  geom_hline(yintercept = 0) +
+  
+  labs(title = "Convergence of the dbh parameters",,
+       subtitle = "species*dbh with covariance") +
+  
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5),
         plot.subtitle = element_text(hjust = 0.5))
 ```
 
-
-#### Species-specific at a mean DBH 
-
-```{r}
-# Compute mean LAD distribution
-lad_exp3_meandbh_spspe <- out_exp3 %>% 
-  purrr::map(~.x$outputs %>% 
-               getSample(start = nrow(.x$outputs$chain[[1]]) - n_analysis_exp3, 
-                         end = NULL, 
-                         thin = thinning_exp3,
-                         coda = TRUE) %>%
-               purrr::map(~as.data.frame(.x) %>%
-                            dplyr::mutate(iteration = row_number()) %>%
-                            dplyr::relocate(iteration)) %>%
-               dplyr::bind_rows(.id = "subchain")) %>%
-  dplyr::bind_rows(.id = "id_simu") %>% 
-  
-  # Compute the LAD for each species
-  dplyr::select(id_simu, subchain, iteration,
-                sigma_log, sigma_site_log, sigma_origin_log,
-                sigma_intercept_log, sigma_dbh_log,
-                intercept_noSP = intercept, intercept_meanSP = mean_intercept,
-                contains("z_intercept")) %>% 
-  
-  tidyr::pivot_longer(!c(id_simu, subchain, iteration,
-                         sigma_log, sigma_site_log, sigma_origin_log,
-                         sigma_intercept_log, sigma_dbh_log,
-                         intercept_noSP, intercept_meanSP),
-                      names_prefix = "z_intercept.",
-                      names_to = "species",
-                      values_to = "z_intercept") %>% 
-  
-  
-  # Replace NA of random effects by 0 (adding a 0 variance term do nothing)
-  dplyr::mutate(
-    sigma_mod = ifelse(is.na(sigma_log), 0, exp(sigma_log)),
-    sigma_site = ifelse(is.na(sigma_site_log), 0, exp(sigma_site_log)),
-    sigma_origin = ifelse(is.na(sigma_origin_log), 0, exp(sigma_origin_log)),
-    sigma_dbh = ifelse(is.na(sigma_dbh_log), 0, exp(sigma_dbh_log))
-  ) %>% 
-  dplyr::mutate(
-    
-    # Here do not consider variance form intercept as we compute species-specific intercept
-    sigma_intercept = 0,
-    
-    # Compute the species specific intercept
-    intercept_spspe = intercept_meanSP + exp(sigma_intercept_log) * z_intercept,
-    
-    # Get the intercept by keeping species-specific or signle intercept according to the model
-    intercept = coalesce(intercept_noSP, intercept_spspe)
-    ) %>% 
-  
-  # Compute variance (do not forget that we fit a log_normal LAD, thus consider variance term when back transforming)
-  dplyr::mutate(
-    variance_sum = sigma_mod^2 + sigma_site^2 + sigma_origin^2 + sigma_intercept^2 + sigma_dbh^2,
-    
-    lad = exp(intercept + 0.5*variance_sum)
-  ) %>%
-  
-  # Add modalities
-  dplyr::mutate(str_mod = mods_exp3[id_simu])
-
-
-# Compute LAD summaries
-summaries_exp3_meandbh_spspe <- lad_exp3_meandbh_spspe %>% 
-  dplyr::group_by(str_mod, species) %>% 
-  dplyr::summarise(
-    lad_qt025 = quantile(lad, 0.025),
-    lad_median = quantile(lad, 0.5),
-    lad_qt975 = quantile(lad, 0.975)
-  ) %>% 
-  dplyr::ungroup() %>% 
-  dplyr::arrange(str_mod, lad_median)
-
-print(summaries_exp3_meandbh_spspe %>% 
-        as.data.frame())
-
-
-# Plot LAD distribution for each species, by models
-summaries_exp3_meandbh_spspe %>% 
-
-  ggplot(aes(y = species, color = species)) +
-  facet_wrap(~str_mod, scales = "free_x") +
-  geom_pointrange(mapping = aes(x = lad_median, 
-                                xmin = lad_qt025, 
-                                xmax = lad_qt975)) +
-  
-  xlab("LAD distribution") +
-  ylab("") +
-  labs(title = "Species-specific LAD prediction for all models",
-       subtitle = "at a mean DBH (28cm)",
-       colour = "species") +
-  
-  theme_bw() +
-  theme(legend.position = "none",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5))
-
-
-lad_exp3_meandbh_spspe %>% 
-
-  ggplot(aes(x = lad, color = species)) +
-  facet_wrap(~str_mod, scales = "free") +
-  geom_density(linewidth = 0.5) +
-  
-  xlab("LAD distribution") +
-  ylab("density") +
-  labs(title = "Species-specific LAD prediction for all models",
-       subtitle = "at a mean DBH (28cm)",
-       colour = "species") +
-  
-  theme_bw() +
-  theme(legend.position = "right",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5))
-```
-
-#### Effect of DBH for each species
+### Effect of DBH for each species
 
 ```{r}
 dbh_cm_small <- 10
 dbh_cm_large <- 60
 
 # Compute mean LAD distribution
-params_exp3_dbh_spspe <- out_exp3 %>% 
-  purrr::map(~.x$outputs %>% 
-               getSample(start = nrow(.x$outputs$chain[[1]]) - n_analysis_exp3, 
+params_clean <- out_list$output %>% 
+  purrr::map(~.x$output) %>% 
+  setNames(out_list$output %>% purrr::map(~.x$i_chain))
+
+params_clean <- params_clean %>% 
+  purrr::map(~.x %>% 
+               getSample(start = nrow(.x$chain[[1]]) - n_analysis_clean, 
                          end = NULL, 
-                         thin = thinning_exp3,
+                         thin = thinning_clean,
                          coda = TRUE) %>%
                purrr::map(~as.data.frame(.x) %>%
                             dplyr::mutate(iteration = row_number()) %>%
                             dplyr::relocate(iteration)) %>%
                dplyr::bind_rows(.id = "subchain")) %>%
-  dplyr::bind_rows(.id = "id_simu") %>% 
+  dplyr::bind_rows(.id = "chain") %>% 
   
     # Compute the LAD for each species
-  dplyr::select(id_simu, subchain, iteration,
+  dplyr::select(chain, subchain, iteration,
                 sigma_log, sigma_site_log, sigma_origin_log,
                 sigma_intercept_log, sigma_dbh_log,
-                intercept_noSP = intercept, intercept_meanSP = mean_intercept,
-                dbh_noSP = dbh, dbh_meanSP = mean_dbh,
+                mean_intercept, mean_dbh,
                 contains("z_intercept"), contains("z_dbh"),
                 rho_raw) %>% 
   
-  tidyr::pivot_longer(!c(id_simu, subchain, iteration,
+  tidyr::pivot_longer(!c(chain, subchain, iteration,
                          sigma_log, sigma_site_log, sigma_origin_log,
                          sigma_intercept_log, sigma_dbh_log,
-                         intercept_noSP, intercept_meanSP,
-                         dbh_noSP, dbh_meanSP, rho_raw),
+                         mean_intercept, mean_dbh, rho_raw),
                       names_pattern = "z_(.*)\\.(.*)",
                       names_to = c("param", "species"),
                       values_to = "z") %>% 
@@ -1170,18 +753,14 @@ params_exp3_dbh_spspe <- out_exp3 %>%
                      names_from = "param",
                      names_prefix = "z_") %>% 
   
-  
-  # Replace NA of random effects by 0 (adding a 0 variance term do nothing)
-  dplyr::mutate(
-    sigma_mod = ifelse(is.na(sigma_log), 0, exp(sigma_log)),
-    sigma_site = ifelse(is.na(sigma_site_log), 0, exp(sigma_site_log)),
-    sigma_origin = ifelse(is.na(sigma_origin_log), 0, exp(sigma_origin_log))
-  ) %>% 
   dplyr::mutate(
     
-    # Here do not consider variance form intercept as we compute species-specific intercept
-    sigma_intercept = 0,
-    sigma_dbh = 0,
+    # Exponentiate sigmas
+    sigma_mod = exp(sigma_log),
+    sigma_site = exp(sigma_site_log),
+    sigma_origin = exp(sigma_origin_log),
+    sigma_intercept = exp(sigma_intercept_log),
+    sigma_dbh = exp(sigma_dbh_log),
     
     # Compute the rho parameter (covariance)
     rho_raw = ifelse(is.na(rho_raw), 0, rho_raw),
@@ -1189,27 +768,19 @@ params_exp3_dbh_spspe <- out_exp3 %>%
     sqrt1mr2 = sqrt(1 - rho^2),
     
     # Compute the species specific intercept and dbh effect
-    intercept_spspe = intercept_meanSP + exp(sigma_intercept_log) * z_intercept,
-    dbh_spspe = dbh_meanSP + exp(sigma_dbh_log) * (rho * z_intercept + sqrt1mr2 *z_dbh),
-    
-    # Get the intercept by keeping species-specific or signle intercept according to the model
-    intercept = coalesce(intercept_noSP, intercept_spspe),
-    param_dbh = coalesce(dbh_noSP, dbh_spspe),
-    param_dbh = ifelse(is.na(param_dbh), 0, param_dbh)
-    ) %>% 
+    intercept_spspe = mean_intercept + exp(sigma_intercept_log) * z_intercept,
+    dbh_spspe = mean_dbh + exp(sigma_dbh_log) * (rho * z_intercept + sqrt1mr2 *z_dbh)
+  ) %>% 
   
   # Compute variance (do not forget that we fit a log_normal LAD, thus consider variance term when back transforming)
   dplyr::mutate(
     variance_sum = sigma_mod^2 + sigma_site^2 + sigma_origin^2 + sigma_intercept^2 + sigma_dbh^2
-  ) %>%
-  
-  # Add modalities
-  dplyr::mutate(str_mod = mods_exp3[id_simu])
+  )
   
 
 # Observe covariance parameter (same between species)
-params_exp3_dbh_spspe %>% 
-  dplyr::filter(id_simu == "4_2", species == "Abies_alba") %>% 
+params_clean %>% 
+  dplyr::group_by(chain, subchain) %>% 
   dplyr::summarise(
     rho_lower = quantile(rho, 0.025),
     rho_median = median(rho),
@@ -1217,9 +788,55 @@ params_exp3_dbh_spspe %>%
   )
 
 
+# Plot LAD prediction along dbh for a mean species gradient for each model 
+tidyr::crossing(
+  params_clean,
+  dbh_cm = seq(
+    quantile(out_list$setup[[1]]$dbh_vect, 0.025),
+    quantile(out_list$setup[[1]]$dbh_vect, 0.975),
+    length.out = 100
+  )
+) %>% 
+  
+  dplyr::mutate(
+    dbh_std = (dbh_cm - out_list$setup[[1]]$dbh_mean) / out_list$setup[[1]]$dbh_sd
+  ) %>% 
+  
+  dplyr::mutate(
+    lad = exp(intercept_spspe + dbh_std * dbh_spspe + 0.5*variance_sum)
+  ) %>% 
+  
+  dplyr::group_by(chain, subchain, species, dbh_cm) %>% 
+  dplyr::summarise(
+    lad_median = median(lad),
+    lad_lower = quantile(lad, 0.025),
+    lad_upper = quantile(lad, 0.975)
+  ) %>% 
+  
+  ggplot(aes(y = lad_median, x = dbh_cm, 
+             color = chain, linetype = subchain)) +
+  facet_wrap(~species, scales = "free_y") +
+  
+  geom_line() +
+  # geom_ribbon(aes(ymin = lad_lower, ymax = lad_upper, 
+  #                 fill = chain, linetype = subchain),
+  #             color = NA,
+  #             alpha = 0.4) +
+  
+  xlab("DBH (in cm)") +
+  ylab("LAD prediction") +
+  labs(title = "LAD models along a DBH gradient",
+       subtitle = "between 2.5% and 97.5% quantiles of all species observed DBH") +
+  
+  theme_bw() +
+  theme(legend.position = "right",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+
+
 # Plot LAD prediction for two dbh
-lad_exp3_dbh_spspe_2sizes <- tidyr::crossing(
-  params_exp3_dbh_spspe,
+lad_clean_2sizes <- tidyr::crossing(
+  params_clean,
   tree_size = c("small", "large")
 ) %>% 
   
@@ -1228,15 +845,15 @@ lad_exp3_dbh_spspe_2sizes <- tidyr::crossing(
                     dbh_cm_small,
                     dbh_cm_large),
     
-    dbh_std = (dbh_cm - out_list$setup$`1_2`$dbh_mean) / out_list$setup$`1_2`$dbh_sd
+    dbh_std = (dbh_cm - out_list$setup[[1]]$dbh_mean) / out_list$setup[[1]]$dbh_sd
     
   ) %>% 
   
   dplyr::mutate(
-    lad = exp(intercept + dbh_std * param_dbh + 0.5*variance_sum)
+    lad = exp(intercept_spspe + dbh_std * dbh_spspe + 0.5*variance_sum)
   ) %>% 
   
-  dplyr::group_by(str_mod, species, tree_size) %>% 
+  dplyr::group_by(chain, species, tree_size) %>% 
   dplyr::summarise(
     lad_lower = quantile(lad, 0.025),
     lad_median = median(lad),
@@ -1252,40 +869,13 @@ lad_exp3_dbh_spspe_2sizes <- tidyr::crossing(
                                      "Quercussp", "other") ~ "angiosperm"))
 
 
-
-
-lad_exp3_dbh_spspe_2sizes %>%   
-  ggplot(aes(y = interaction(species, tree_size),
-             color = species, shape = order)) +
-  facet_wrap(~str_mod, scales = "free_x") +
-  geom_pointrange(mapping = aes(x = lad_median, 
-                                xmin = lad_lower, 
-                                xmax = lad_upper)) +
-  
-  scale_y_discrete(NULL, guide = "axis_nested") +
-  xlab("LAD distribution") +
-  ylab("") +
-  labs(title = "Species-specific LAD prediction for all models",
-       subtitle = paste0("for a small tree (dbh = ",
-                         dbh_cm_small,
-                         "cm) and a large tree (dbh = ",
-                         dbh_cm_large,
-                         "cm)"),
-       colour = "species") +
-  
-  theme_bw() +
-  theme(legend.position = "none",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5),
-        axis.text.y = element_text(size = 6))
-  
-
 # Plot LAD for final model for two dbh
-lad_exp3_dbh_spspe_2sizes %>%
-  dplyr::filter(str_mod == "dbh*species with covar") %>% 
+lad_clean_2sizes %>%
   
   ggplot(aes(y = interaction(species, tree_size),
              color = species, shape = order)) +
+  facet_wrap(~chain, scales = "free_x") +
+  
   geom_pointrange(mapping = aes(x = lad_median, 
                                 xmin = lad_lower, 
                                 xmax = lad_upper)) +
@@ -1309,65 +899,497 @@ lad_exp3_dbh_spspe_2sizes %>%
         plot.subtitle = element_text(hjust = 0.5),
         axis.text.y = element_text(size = 7)) +
      guides(colour = "none")
-
-
-
-# Plot LAD prediction along dbh for a mean species gradient for each model 
-species_vect <- unique(params_exp3_dbh_spspe$species)
-for (sp in species_vect) {
-  
-  print(
-    
-    tidyr::crossing(
-      params_exp3_dbh_spspe %>% 
-        dplyr::filter(species == sp),
-      dbh_cm = seq(
-        quantile(out_list$setup$`1_2`$dbh_vect, 0.025),
-        quantile(out_list$setup$`1_2`$dbh_vect, 0.975),
-        length.out = 1000
-      )
-    ) %>% 
-      
-      dplyr::mutate(
-        dbh_std = (dbh_cm - out_list$setup$`1_2`$dbh_mean) / out_list$setup$`1_2`$dbh_sd
-      ) %>% 
-      
-      dplyr::mutate(
-        lad = exp(intercept + dbh_std * param_dbh + 0.5*variance_sum)
-      ) %>% 
-      
-      dplyr::group_by(str_mod, subchain, dbh_cm) %>% 
-      dplyr::summarise(
-        lad_median = median(lad),
-        lad_lower = quantile(lad, 0.025),
-        lad_upper = quantile(lad, 0.975)
-      ) %>% 
-      
-      ggplot(aes(y = lad_median, x = dbh_cm, 
-                 color = subchain)) +
-      facet_wrap(~str_mod) +
-      
-      geom_line() +
-      geom_ribbon(aes(ymin = lad_lower, ymax = lad_upper, fill = subchain),
-                  color = NA,
-                  alpha = 0.4) +
-      
-      xlab("DBH (in cm)") +
-      ylab("LAD prediction") +
-      labs(title = "LAD models along a DBH gradient",
-           subtitle = paste0(sp, " - between 2.5% and 97.5% quantiles of all species observed DBH"),
-           colour = "subchain") +
-      
-      theme_bw() +
-      theme(legend.position = "right",
-            plot.title = element_text(hjust = 0.5),
-            plot.subtitle = element_text(hjust = 0.5))
-  )
-}
 ```
 
 
 
+## Effect of BAxDBH
+
+100,000 iterations and 1 chain
+
+```{r}
+load("output/calib/out_20251218_dbhXbatot.Rdata")
+
+# Parameters
+n_analysis_clean <- 15000
+thinning_clean <- 15
+
+out_list$exp_design
+```
+
+### Computation time
+
+```{r}
+out_list$output %>% 
+  purrr::map(~data.frame(
+    id_model = .x$id_model,
+    time_hours = as.numeric(.x$computation_time, 
+                            units = "hours"))) %>% 
+  dplyr::bind_rows() %>% 
+  as.data.frame()
+```
+
+### Observe convergence
+
+```{r}
+trace_clean <- out_list$output %>% 
+  purrr::map(~.x$output) %>% 
+  setNames(out_list$output %>% purrr::map(~.x$id_model)) %>% 
+  purrr::map(~.x %>% 
+               getSample(start = 0, 
+                         end = NULL, 
+                         thin = 1,
+                         coda = TRUE) %>%
+               purrr::map(~as.data.frame(.x) %>%
+                            dplyr::mutate(iteration = row_number()) %>%
+                            dplyr::relocate(iteration)) %>%
+               dplyr::bind_rows(.id = "subchain")) %>%
+  dplyr::bind_rows(.id = "id_model") %>% 
+  
+  # Called the non species-specific model a mean species 
+  dplyr::select(id_model, subchain, iteration,
+                sigma_log, sigma_site_log, sigma_origin_log,
+                intercept, dbh, batot, dbhXbatot) %>% 
+  tidyr::pivot_longer(!c(id_model, subchain, iteration),
+                      names_to = "parameter",
+                      values_to = "estimate")
+
+
+# Model sigmas
+trace_clean %>% 
+  
+  dplyr::filter(parameter %in% c("sigma_log", "sigma_site_log", "sigma_origin_log")) %>% 
+  
+  ggplot(aes(y = estimate, x = iteration, color = subchain)) +
+  facet_grid(parameter~id_model, scales = "free") +
+  geom_line() +
+  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean,
+             linetype = "dashed") +
+  
+  labs(title = "Convergence of the sigma parameters",
+       subtitle = "species*dbh with covariance") +
+  
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+
+
+# Model predictors
+trace_clean %>% 
+  
+  dplyr::filter(parameter %in% c("intercept", "dbh", "batot", "dbhXbatot")) %>% 
+  
+  ggplot(aes(y = estimate, x = iteration, 
+             color = id_model, linetype = subchain)) +
+  facet_wrap(~parameter, scales = "free", nrow = 1) +
+  geom_line() +
+  
+  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean,
+             linetype = "dashed") +
+  geom_hline(yintercept = 0) +
+  
+  labs(title = "Convergence of the predictors parameters",
+       subtitle = "species*dbh with covariance") +
+  
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "top")
+```
+
+
+### Effect of DBH X batot on a mean species
+
+```{r}
+tar_load(output_params)
+tar_load(models_setup)
+
+# Define modalities for graphs
+dbh_cm_small <- 10
+dbh_cm_large <- 60
+
+batot_m2ha_low <- 10
+batot_m2ha_high <- 40
+
+
+# Plot LAD prediction along dbh for a mean species gradient for each model 
+data_plt_dbhXbatot <- dplyr::bind_rows(
+  
+  # Effect of DBH for two BATOT
+  tidyr::crossing(
+    var_x = "dbh",
+    output_params[[1]],
+    dbh_cm = seq(
+      quantile(models_setup[[1]]$dbh_vect, 0.025),
+      quantile(models_setup[[1]]$dbh_vect, 0.975),
+      length.out = 100
+    ),
+    compet_intensity = c("low", "high")
+  ),
+  
+  # Effect of BATOT for two DBH
+  tidyr::crossing(
+    var_x = "batot",
+    output_params[[1]],
+    batot_m2ha = seq(
+      quantile(models_setup[[1]]$batot_vect, 0.025),
+      quantile(models_setup[[1]]$batot_vect, 0.975),
+      length.out = 100
+    ),
+    tree_size = c("small", "large")
+  )
+  
+) %>% 
+  
+  dplyr::mutate(
+    
+    # Set ref modalities for plot
+    dbh_cm = ifelse(var_x == "batot",
+                    ifelse(tree_size == "small",
+                           dbh_cm_small,
+                           dbh_cm_large),
+                    dbh_cm),
+                    
+    batot_m2ha = ifelse(var_x == "dbh",
+                    ifelse(compet_intensity == "low",
+                           batot_m2ha_low,
+                           batot_m2ha_high),
+                    batot_m2ha),
+    
+    # Exponentiate sigmas
+          sigma_mod = exp(sigma_log),
+          sigma_site = exp(sigma_site_log),
+          sigma_origin = exp(sigma_origin_log),
+          
+    # Compute variance (do not forget that we fit a log_normal LAD, 
+    # thus consider variance term when back transforming)
+    variance_sum = sigma_mod^2 + sigma_site^2 + sigma_origin^2,
+    
+    # Restandardize predictors
+    dbh_std = (dbh_cm - models_setup[[1]]$dbh_mean) / models_setup[[1]]$dbh_sd,
+    batot_std = (batot_m2ha - models_setup[[1]]$batot_mean) / models_setup[[1]]$batot_sd
+  ) %>% 
+  
+  dplyr::mutate(
+    lad = exp(intercept + 
+                dbh_std * dbh + 
+                batot_std * batot +
+                dbh_std * batot_std * dbhXbatot + 
+                0.5*variance_sum)
+  ) 
+
+
+## ------- LAD = f(DBH) for two BATOT ----
+data_plt_dbhXbatot %>% 
+  dplyr::filter(var_x == "dbh") %>% 
+  
+  dplyr::group_by(dbh_cm, compet_intensity) %>% 
+  dplyr::summarise(
+    lad_median = median(lad),
+    lad_lower = quantile(lad, 0.025),
+    lad_upper = quantile(lad, 0.975)
+  ) %>% 
+  
+  ggplot(aes(y = lad_median, x = dbh_cm, color = compet_intensity)) +
+
+  geom_line() +
+  geom_ribbon(aes(ymin = lad_lower, ymax = lad_upper,
+                  fill = compet_intensity),
+              color = NA,
+              alpha = 0.4) +
+  
+  xlab("DBH (in cm)") +
+  ylab("LAD prediction") +
+  labs(title = "LAD models along a DBH gradient",
+       subtitle = "between 2.5% and 97.5% quantiles of all species observed DBH\nfor a total basal area of either 10m2ha (low) or 40m2ha (high)") +
+  
+  theme_bw() +
+  theme(legend.position = "right",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  scale_color_manual(values = c("low" = "olivedrab", "high" = "darkgreen")) +
+  scale_fill_manual(values = c("low" = "olivedrab", "high" = "darkgreen"))
+
+
+## ------- LAD = f(BATOT) for two DBH ----
+data_plt_dbhXbatot %>% 
+  dplyr::filter(var_x == "batot") %>% 
+  
+  dplyr::group_by(batot_m2ha, tree_size) %>% 
+  dplyr::summarise(
+    lad_median = median(lad),
+    lad_lower = quantile(lad, 0.025),
+    lad_upper = quantile(lad, 0.975)
+  ) %>% 
+  
+  ggplot(aes(y = lad_median, x = batot_m2ha, color = tree_size)) +
+
+  geom_line() +
+  geom_ribbon(aes(ymin = lad_lower, ymax = lad_upper,
+                  fill = tree_size),
+              color = NA,
+              alpha = 0.4) +
+  
+  xlab("Total basal area (in m2/ha)") +
+  ylab("LAD prediction") +
+  labs(title = "LAD models along a BATOT gradient",
+       subtitle = "between 2.5% and 97.5% quantiles of all plots observed BATOT\nfor a tree DBH of either 10cm (small) or 60cm (large)") +
+  
+  theme_bw() +
+  theme(legend.position = "right",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+```
+
+
+# Output analysis
+
+```{r}
+tar_load(data_output_tree)
+tar_load(data_output_stand)
+tar_load(data_output_light)
+tar_load(LAD_CONTROL)
+```
+
+## Observe initial data
+
+```{r}
+ggplot(data_output_tree, aes(y = batot_m2ha, x = order, color = order)) +
+  geom_boxplot() +
+  theme_bw() +
+  xlab("Tree clade") +
+  ylab("Stand basal area (in m2/ha)")
+
+ggplot(data_output_tree, aes(y = dbh_cm, x = order, color = order)) +
+  geom_boxplot() +
+  theme_bw() +
+  xlab("Tree clade") +
+  ylab("Tree DBH (in cm)")
+
+ggplot(data_output_tree, aes(y = batot_m2ha, x = species_calib, 
+                                  color = species_calib)) +
+  geom_boxplot() +
+  theme_bw() +
+  xlab("Tree species") +
+  ylab("Stand basal area (in m2/ha)")
+
+ggplot(data_output_tree, aes(y = dbh_cm, x = species_calib, 
+                                  color = species_calib)) +
+  geom_boxplot() +
+  theme_bw() +
+  xlab("Tree species") +
+  ylab("Tree DBH (in cm)")
+
+ggplot(data_output_tree, aes(y = dbh_cm, x = batot_m2ha, color = order)) +
+  geom_point() +
+  theme_bw() +
+  xlab("Stand basal area (in m2/ha)") +
+  ylab("Tree DBH (in cm)")
+  
+ggplot(data_output_tree, aes(y = dbh_cm, x = batot_m2ha, color = species_calib)) +
+  geom_point() +
+  theme_bw() +
+  xlab("Stand basal area (in m2/ha)") +
+  ylab("Tree DBH (in cm)")
+
+ggplot(data_output_tree, aes(y = volume_m3, x = dbh_cm, color = batot_m2ha)) +
+  geom_point() +
+  theme_bw() +
+  scale_color_viridis_c() +
+  xlab("Tree DBH (in cm)") +
+  ylab("Tree crown volume (in m3)")
+```
+
+
+## Tree-level consequences on tree leaf area
+
+```{r}
+# --------- Prediction of LAD --------
+data_output_tree %>% 
+  
+  ggplot(aes(y = lad_model_median, x = dbh_cm, color = batot_m2ha)) +
+  geom_pointrange(aes(ymin = lad_model_lower, ymax = lad_model_upper)) +
+  geom_hline(yintercept = LAD_CONTROL, linetype = "dashed", 
+             color = "salmon", linewidth = 1.05) +
+  
+  xlab("DBH (in cm)") +
+  ylab("Predicted leaf area density (in m2/ha)") +
+  
+  theme_bw() +
+  theme(legend.position = "right",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  scale_color_viridis_c()
+
+
+# --------- Prediction of LA --------
+data_output_tree %>% 
+  dplyr::select(site_name, id_tree, dbh_cm, batot_m2ha, species_calib,
+                contains("la_"), -contains("diff_la")) %>% 
+  tidyr::pivot_longer(
+    !c(site_name, id_tree, species_calib, dbh_cm, batot_m2ha),
+    names_pattern = "la_(.*)_(.*)",
+    names_to = c("lad_model", "var"),
+    values_to = "leaf_area_m2"
+  ) %>% 
+  tidyr::pivot_wider(
+    names_from = "var",
+    values_from = "leaf_area_m2"
+  ) %>% 
+  
+  ggplot(aes(y = median, x = dbh_cm, color = batot_m2ha)) +
+  facet_wrap(~lad_model) +
+  geom_pointrange(aes(ymin = lower, ymax = upper)) +
+  
+  xlab("DBH (in cm)") +
+  ylab("Total leaf area (in m2)") +
+  
+  theme_bw() +
+  theme(legend.position = "top",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  scale_color_viridis_c()
+
+
+# ------- Differences in LA -----
+data_output_tree %>% 
+  
+  ggplot(aes(y = diff_la_median, x = dbh_cm, color = batot_m2ha)) +
+  geom_pointrange(aes(ymin = diff_la_lower, ymax = diff_la_upper)) +
+  
+  xlab("DBH (in cm)") +
+  ylab("Difference in LA between control and predicted LAD") +
+  
+  theme_bw() +
+  theme(legend.position = "right",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  scale_color_viridis_c()
+```
+
+
+## Stand-level consequences on leaf area index LAI
+
+```{r}
+# --------- Prediction of LAI --------
+data_output_stand %>% 
+  dplyr::select(site_name, batot_m2ha, 
+                contains("lai_model"), contains("lai_control")) %>% 
+  tidyr::pivot_longer(
+    !c(site_name, batot_m2ha),
+    names_pattern = "lai_(.*)_(.*)",
+    names_to = c("lad_model", "var"),
+    values_to = "lai_m2m2"
+  ) %>% 
+  tidyr::pivot_wider(
+    names_from = "var",
+    values_from = "lai_m2m2"
+  ) %>% 
+  
+  ggplot(aes(y = median, x = batot_m2ha, color = lad_model)) +
+  geom_pointrange(aes(ymin = lower, ymax = upper)) +
+  geom_smooth(method = "lm") +
+  
+  xlab("Total basal area (in m2/ha)") +
+  ylab("Stand leaf area index (in m2/m2)") +
+  
+  theme_bw() +
+  theme(legend.position = "top",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) 
+
+
+# ------- Differences in LAI -----
+data_output_stand %>% 
+  
+  ggplot(aes(y = diff_lai_median, x = batot_m2ha)) +
+  geom_pointrange(aes(ymin = diff_lai_lower, ymax = diff_lai_upper)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  
+  geom_smooth(method = "lm") +
+  
+  xlab("Total basal area (in m2/ha)") +
+  ylab("Difference in LAI between control and predicted LAD") +
+  
+  theme_bw() +
+  theme(legend.position = "right",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+```
+
+## Consequences on light
+
+### Tree-level
+
+```{r}
+# --------- Prediction of intercepted energy --------
+data_output_light$trees %>% 
+  dplyr::left_join(data_output_tree %>% 
+                     dplyr::select(site = site_name, batot_m2ha,
+                                   species_calib,
+                                   id_tree, dbh_cm),
+                   by = c("site", "id_tree")) %>% 
+  dplyr::select(site, batot_m2ha, 
+                id_tree, dbh_cm, species_calib,
+                contains("lci_")) %>% 
+  tidyr::pivot_longer(
+    !c(site, batot_m2ha, id_tree, dbh_cm, species_calib),
+    names_pattern = "lci_(.*)_(.*)",
+    names_to = c("var", "lad_model"),
+    values_to = "lci"
+  ) %>% 
+  tidyr::pivot_wider(
+    names_from = "var",
+    values_from = "lci"
+  ) %>% 
+  
+  ggplot(aes(y = median, x = dbh_cm, color = batot_m2ha)) +
+  facet_wrap(~lad_model) +
+  geom_pointrange(aes(ymin = lower, ymax = upper)) +
+
+  scale_color_viridis_c() +
+  
+  xlab("Total basal area (in m2/ha)") +
+  ylab("Mean proportion of above canopy light PACL") +
+  
+  theme_bw() +
+  theme(legend.position = "top",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) 
+```
+
+### Stand-level
+
+```{r}
+data_output_light$stand %>% 
+  dplyr::left_join(data_output_stand %>% 
+                     dplyr::select(site = site_name, batot_m2ha),
+                   by = "site") %>% 
+  dplyr::select(site, batot_m2ha, 
+                contains("pacl_mean")) %>% 
+  tidyr::pivot_longer(
+    !c(site, batot_m2ha),
+    names_pattern = "pacl_mean_(.*)_(.*)",
+    names_to = c("var", "lad_model"),
+    values_to = "pacl_mean"
+  ) %>% 
+  tidyr::pivot_wider(
+    names_from = "var",
+    values_from = "pacl_mean"
+  ) %>% 
+  
+  ggplot(aes(y = median, x = batot_m2ha, color = lad_model)) +
+  geom_pointrange(aes(ymin = lower, ymax = upper)) +
+  geom_smooth(method = "lm") +
+  
+  xlab("Total basal area (in m2/ha)") +
+  ylab("Mean proportion of above canopy light PACL") +
+  
+  theme_bw() +
+  theme(legend.position = "top",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) 
+```
 
 
 

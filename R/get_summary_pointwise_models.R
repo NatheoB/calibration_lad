@@ -1,5 +1,6 @@
 get_summary_pointwise_models <- function(models_setup,
-                                         models_output) {
+                                         model_output,
+                                         logs_folder) {
   
   get_summary_pointwise_model <- function(output) {
     
@@ -35,30 +36,73 @@ get_summary_pointwise_models <- function(models_setup,
     )
   }
   
+  # Get model infos ----
+  id_model <- model_output$id_model
+  i_chain <- model_output$i_chain
+  
+  
+  # Initialize the logs ----
+  
+  ## Create the folder
+  dir.create(logs_folder, showWarnings = FALSE)
+  
+  # Unique log file per worker that close at the end of the function
+  log_file <- sprintf("logs/pointwise-mod%s-chain%i-worker%s-%s.log", 
+                      id_model, i_chain, 
+                      Sys.getpid(), Sys.Date())
+  
+  # Capture output (prints)
+  con <- file(log_file, open = "wt")
+  sink(con)
+  
   
   # Compute the residuals of all the last samples of each model ----
+  ## Storing errors, warnings and messages
+  cat("----- Computing residuals and pointwise log-likelihood of model", id_model, "/ chain", i_chain, "-----\n\n\n")
   
-  # Calibrate all the models ----
-  ids_simu <- names(models_setup)
-  n_mods <- length(ids_simu)
+  result <- tryCatch(
+    {
+      # Use withCallingHandlers to capture messages/warnings
+      withCallingHandlers({
+        
+        cat("Starting computing\n\n")
+      
+        ## Set the model environment
+        environment(get_summary_pointwise_model) <- models_setup[[id_model]]
+        
+        ## Get the model residuals and pointwise log-likelihood matrices
+        out <- get_summary_pointwise_model(model_output$outputs)
+        
+        ## Add model IDs to output
+        out$id_model <- id_model
+        out$i_chain <- i_chain
+        
+        cat("\n\nFinished computing\n\n")
+        
+        out
+      },
+      message = function(m) {
+        cat("\n[MESSAGE] ", conditionMessage(m), "\n", file = con)
+        invokeRestart("muffleMessage")
+      },
+      warning = function(w) {
+        cat("\n[WARNING] ", conditionMessage(w), "\n", file = con)
+        invokeRestart("muffleWarning")
+      })
+    },
+    error = function(e) {
+      cat("\n[ERROR] ", conditionMessage(e), "\n", file = con)
+      # Return a safe placeholder (e.g., NA or empty list)
+      list(failed = TRUE, params = params, result = NA)
+    }
+  )
   
-  models_matrices <- setNames(vector("list", n_mods), ids_simu)
-  for (i in 1:n_mods) {
-    
-    # Get the simu name
-    id_simu <- ids_simu[i]
-    
-    # Print a message to follow the calibration process
-    message(paste0("Computing residuals and pointwise log-likelihood of model ", id_simu, " - ", i, "/", n_mods, "..."))
-    
-    # Set the model environment
-    environment(get_summary_pointwise_model) <- models_setup[[id_simu]]
-    
-    # Get the model residuals and pointwise log-likelihood matrices
-    models_matrices[[id_simu]] <- get_summary_pointwise_model(models_output[[id_simu]]$outputs)
-  }
+  cat("\n\n----- Finished model", id_model, "/ chain", i_chain, "-----")
+  close(con)
+  
   
   # Return the list of models' summary matrices ----
-  return(models_matrices)
+  return(result) 
+
   
 }

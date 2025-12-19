@@ -7,6 +7,10 @@ compute_competition_trees <- function(data_trees, plot_area) {
   # Compute competition variables
   data_trees %>% 
     
+    # Compute social status of the tree
+    dplyr::mutate(dg_cm = sqrt(sum(dbh_cm^2)/n()),
+                  compet_status = dbh_cm/dg_cm) %>% 
+    
     # Compute basal area per hectare of each tree
     # Convert DBH (centimeters) in meters
     dplyr:::mutate(G_ha = (pi * (dbh_cm/100)^2 / 4) * plot_weight) %>% 

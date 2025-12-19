@@ -5,23 +5,24 @@ initialise_models <- function(exp_design,
                               data_rad,
                               output_lad_method1,
                               species2calib,
-                              parallel = FALSE) {
+                              prior_lad) {
   
   
   ## Create the Bayesian setup for each model ----
-  ids_simu <- exp_design$id_simu
-  model_setups <- setNames(vector("list", length(ids_simu)), ids_simu)
-  for (i in 1:length(ids_simu)) {
+  ids_model <- exp_design$id_model
+  model_setups <- setNames(vector("list", length(ids_model)), ids_model)
+  for (i in 1:length(ids_model)) {
     
-    id_simu <- ids_simu[i]
+    id_model <- ids_model[i]
     
-    model_setups[[id_simu]] <- initialise_model(exp_design[i,],
-                                                data_sensors, 
-                                                data_plots,
-                                                data_calib, 
-                                                data_rad,
-                                                output_lad_method1,
-                                                species2calib)
+    model_setups[[id_model]] <- initialise_model(exp_design[i,],
+                                                 data_sensors, 
+                                                 data_plots,
+                                                 data_calib, 
+                                                 data_rad,
+                                                 output_lad_method1,
+                                                 species2calib,
+                                                 prior_lad)
   }
   
   
@@ -38,7 +39,7 @@ initialise_model <- function(mod_design,
                              data_rad,
                              output_lad_method1,
                              species2calib,
-                             parallel = FALSE) {
+                             prior_lad) {
   
   # BayesianTools consider global variables during the MCMC sampling
   # Thus, we need to create an environment with all the functions and variables needed for MCMC sampling
@@ -54,7 +55,9 @@ initialise_model <- function(mod_design,
                                site, 
                                lad_random_per_sites,
                                lad_intercept_per_sp,
-                               lad_dbh_per_sp
+                               lad_dbh_per_sp,
+                               lad_batot_withinsite,
+                               lad_dbhXbatot
                                # lad_compet
                                ) {
     
@@ -74,10 +77,14 @@ initialise_model <- function(mod_design,
     
     # Compute the tree LAD ----
     # Here, only add the site random effect, as the origin effect in already included in the estimation of the site effect (hierarchical structure)
+    # But also consider the within site effect of total basal area
     tmp_trees <- data_calib[[site]]$trees %>% 
       dplyr::left_join(sp_intercepts, by = "species_calib") %>% 
       dplyr::mutate( 
-        eta = random_site + intercept_sp + beta_dbh_sp * dbhstd,
+        eta = random_site + 
+          lad_batot_withinsite * batotstd + 
+          intercept_sp + beta_dbh_sp * dbhstd + 
+          lad_dbhXbatot * dbhstd * batotstd,
         crown_lad = exp(eta)
       )
     
@@ -122,6 +129,8 @@ initialise_model <- function(mod_design,
                                      lad_random_per_sites,
                                      lad_intercept_per_sp,
                                      lad_dbh_per_sp,
+                                     lad_batot_withinsite,
+                                     lad_dbhXbatot,
                                      # lad_compet,
                                      print.pb) {
     
@@ -147,7 +156,9 @@ initialise_model <- function(mod_design,
         site, 
         lad_random_per_sites,
         lad_intercept_per_sp,
-        lad_dbh_per_sp
+        lad_dbh_per_sp,
+        lad_batot_withinsite,
+        lad_dbhXbatot
         # lad_compet
       )
       
@@ -228,9 +239,9 @@ initialise_model <- function(mod_design,
     }
     
     
-    # 2. Random effects latent variables ----
+    # 2. Site/origin hierarchical random effects ----
     
-    ## 2.1. Origin random effect----
+    ## 2.1. Origin latent variables ----
     if (mod_design$origin_rd_effect) {
       p_z_origins <- p[i_param + (1:n_origins) - 1]
       i_param <- i_param + n_origins
@@ -238,12 +249,20 @@ initialise_model <- function(mod_design,
       p_z_origins <- rep(0, n_origins)
     }
     
-    ## 2.2. Site random effect ----
+    ## 2.2. Site latent variables ----
     if (mod_design$site_rd_effect) {
       p_z_sites <- p[i_param + (1:n_sites) - 1]
       i_param <- i_param + n_sites
     } else {
       p_z_sites <- rep(0, n_sites)
+    }
+    
+    ## 2.3. within-site effect of total basal area ----
+    if (mod_design$batot_in_site_effect) {
+      p_batot <- p[i_param]
+      i_param <- i_param + 1
+    } else {
+      p_batot <- 0
     }
     
     
@@ -318,6 +337,16 @@ initialise_model <- function(mod_design,
         p_mean_dbh <- 0
         p_dbh_per_sp <- rep(p[i_param], n_species)
         i_param <- i_param + 1
+        
+        
+        if (mod_design$dbh_interaction_batot) {
+          # Single interaction effect over all species
+          p_dbhXbatot <- p[i_param]
+          i_param <- i_param + 1
+        } else {
+          p_dbhXbatot <- 0
+        }
+        
       }
       
     } else {
@@ -325,6 +354,7 @@ initialise_model <- function(mod_design,
       # Otherwise, no dbh effect
       p_mean_dbh <- 0
       p_dbh_per_sp <- rep(0, n_species)
+      p_dbhXbatot <- 0
     }
     
     
@@ -353,9 +383,13 @@ initialise_model <- function(mod_design,
       "z_random_per_origin" = p_z_origins,
       "z_random_per_site" = p_z_sites,
       
+      # Within-site effect of total basal area
+      "batot" = p_batot,
+      
       # Predictors effect
       "intercept_per_sp" = p_intercept_per_sp,
       "dbh_per_sp" = p_dbh_per_sp,
+      "dbhXbatot" = p_dbhXbatot,
       
       # Hyperparameters of predictors
       "mean_intercept" = p_mean_intercept,
@@ -373,19 +407,19 @@ initialise_model <- function(mod_design,
   ## FUNCTION TO COMPUTE LOG LIKELIHOOD OF THE DATA ----
   compute_log_likelihood <- function(p, pointwise = FALSE, print.pb = FALSE) {
     
-    
     # 1. Parameters of the LAD model ---- 
     
     ## 1.1. Unpack the parameter vector ----
     p_list <- split_parameters_vector(p)
-  
+    
     ## 1.2. Check for invalid parameter values ----
     # if (any(!is.finite(unlist(p_list)))) return(-Inf)
-
+    
     
     
     # 2. Compute the hierarchical random effects ----
     # non-centered parameterization
+    # And within-site effetc of total basal area
     
     ### 2.1. Unlog sigma parameters ----
     p_sigma_origin <- exp(p_list$sigma_origin_log)
@@ -400,6 +434,11 @@ initialise_model <- function(mod_design,
     ## 2.4. Site effect nested in the origin effect ----
     p_random_per_site <- mean_origins_per_site + p_sigma_site * p_list$z_random_per_site  # z_site ~ N(0,1)
     
+    ## 2.5. Within-site effect of total basal area ----
+    # For the sake of easier and faster structural implementation in the script
+    # We add beta_batot * BATOTstd in the function run_sl_standXlad
+    # When we compute the individual level LAD
+    # It is the same as summing here in p_random_per_site
     
     
     # 3. Compute intercept and dbh effects ----
@@ -430,8 +469,9 @@ initialise_model <- function(mod_design,
     
     
     # 4. Compute the residuals with the given lad parameters ----
+    # (difference between estimated/observed PACL for each sensor)
     
-    ## 4.1. get residuals by running SmasaraLight ----
+    ## 4.1. get residuals by running SamsaraLight ----
     out_sl <- compute_pacl_residuals(data_sensors,
                                      data_plots,
                                      data_calib, 
@@ -439,16 +479,18 @@ initialise_model <- function(mod_design,
                                      p_random_per_site,
                                      p_intercept_per_sp,
                                      p_dbh_per_sp,
+                                     p_list$batot,
+                                     p_list$dbhXbatot,
                                      # p_list$compet,
                                      print.pb)
     residuals <- out_sl$residuals
     
-    ## 4.2. Check for invalid residuals
+    ## 4.2. Check for invalid residuals ----
     # if (any(!is.finite(residuals))) return(-Inf)
-
     
     
-    # 5. Compute the log-likelihood
+    
+    # 5. Compute the log-likelihood ----
     
     ## 5.1. Unlog sigma parameter ----
     p_sigma <- exp(p_list$sigma_log)
@@ -463,18 +505,16 @@ initialise_model <- function(mod_design,
     
     ## 5.3. Check for invalid log-likelihood ----
     # if (any(!is.finite(log_likelihood_data))) return(-Inf)
-  
     
     
-    # 6. Return correct log-likelihood ----
+    # 6. Return the output residuals and log-likelihood matrices ----
     
-    ## 6.1. Pointwise log-likelihood and residuals ----
+    ## 7.1. Pointwise log-likelihood and residuals ----
     # If pointwise log-likelihood (used for WAIC), return the sum of the log likelihood ONLY from observations
     # For WAIC, the pointwise log-likelihoods should be based only on the likelihood of observed data, 
     # not including the random effects prior (i.e., their contribution to the joint likelihood). 
     # This is consistent with the fact that WAIC is estimating expected predictive performance — 
     # you want to assess how well the model predicts new observed data, not how well it fits the prior on latent variables.
-    
     if (pointwise) {
       return(list(
         "residuals" = residuals,
@@ -482,9 +522,9 @@ initialise_model <- function(mod_design,
       ))
     }
     
-    
-    ## 6.2. Otherwise, return the log-likelihood scalar ----
+    ## 7.2. Otherwise, return the vector of log-likelihood (i.e. for each sensor) ----
     return(sum(log_likelihood_data))
+
   }
     
   
@@ -698,14 +738,16 @@ initialise_model <- function(mod_design,
     # Filter data plots
     data_plots <- data_plots %>% 
       dplyr::filter(name %in% names(data_sensors))
-    
+   
+    # Filter data calib 
+    data_calib <- data_calib[names(data_calib) %in% names(data_sensors)]
   }
   
   
   
   ## Standardized variables ----
   
-  ### DBH
+  ### DBH (per trees) ----
   dbh_vect <- data_calib %>% 
     purrr::map(~.x$trees$dbh_cm) %>% 
     purrr::reduce(c)
@@ -720,6 +762,21 @@ initialise_model <- function(mod_design,
       .x
     })
   
+  
+  ### BATOT (per site) ----
+  batot_vect <- data_calib %>% 
+    purrr::map(~unique(.x$trees$batot_m2ha)) %>% 
+    purrr::reduce(c)
+  
+  batot_mean <- mean(batot_vect)
+  batot_sd <- sd(batot_vect)
+  
+  data_calib <- data_calib %>% 
+    purrr::map(~{
+      .x$trees <- .x$trees %>% 
+        dplyr::mutate(batotstd = (batot_m2ha - batot_mean) / batot_sd)
+      .x
+    })
   
   
   ## Global variables ----
@@ -808,32 +865,37 @@ initialise_model <- function(mod_design,
   # }
  
   
-  ### Random effect latent variables ----
+  ### Hierarchical site/origin random effect ----
   # Non-centered parameterization with latent variables N(0,1)
   # To increase computation time and favour mixing
   
-  #### Origin random effect ----
+  #### Origin latent variables ----
   if (mod_design$origin_rd_effect) {
     par_normal <- c(par_normal, paste0("z_origin.", origin_names))
     prior_normal_mean <- c(prior_normal_mean, rep(0, times=n_origins))
     prior_normal_sd <- c(prior_normal_sd, rep(1, times=n_origins))
   }
   
-  #### Site random effect ----
+  #### Site latent variables ----
   if (mod_design$site_rd_effect) {
     par_normal <- c(par_normal, paste0("z_site.", site_names))
     prior_normal_mean <- c(prior_normal_mean, rep(0, times=n_sites))
     prior_normal_sd <- c(prior_normal_sd, rep(1, times=n_sites))
   }
   
+  #### within-site effect of total basal area ----
+  if (mod_design$batot_in_site_effect) {
+    par_normal <- c(par_normal, "batot")
+    prior_normal_mean <- c(prior_normal_mean, 0)
+    prior_normal_sd <- c(prior_normal_sd, 0.2)
+  }
+  
   
   ### LAD intercept ----
-  # (based on the best LAD guess from the methodology 1)
   # Here, we estimate the log(LAD), to ensure for LAD positivity
-  lad_guess_method1 <- mean(output_lad_method1$best_lad[output_lad_method1$converged])
-  
-  if (lad_guess_method1 <= 0) stop("best lad guess from methodo is lower or equal to 0")
-  lad_guess_method1_log <- log(lad_guess_method1)
+
+  if (prior_lad <= 0) stop("prior lad is lower or equal to 0")
+  prior_lad_log <- log(prior_lad)
   
   
   # Species-specific intercept
@@ -846,7 +908,7 @@ initialise_model <- function(mod_design,
       
       # Mean species with a prior centered around the predicted LAD from methodology 1
       par_normal <- c(par_normal, "mean_intercept")
-      prior_normal_mean <- c(prior_normal_mean, lad_guess_method1_log)
+      prior_normal_mean <- c(prior_normal_mean, prior_lad_log)
       prior_normal_sd <- c(prior_normal_sd, 0.5) 
       
       # Latent variables (for species pooling)
@@ -861,7 +923,7 @@ initialise_model <- function(mod_design,
       
       # fit intercept directly otherwise
       par_normal <- c(par_normal, paste0("intercept.", species2calib)) 
-      prior_normal_mean <- c(prior_normal_mean, rep(lad_guess_method1_log, times=n_species))
+      prior_normal_mean <- c(prior_normal_mean, rep(prior_lad_log, times=n_species))
       prior_normal_sd <- c(prior_normal_sd, rep(0.5, times=n_species))
     }
     
@@ -869,18 +931,22 @@ initialise_model <- function(mod_design,
     
     # a single intercept for all species
     par_normal <- c(par_normal, "intercept")
-    prior_normal_mean <- c(prior_normal_mean, lad_guess_method1_log)
+    prior_normal_mean <- c(prior_normal_mean, prior_lad_log)
     prior_normal_sd <- c(prior_normal_sd, 0.5) 
   }
   
   
   
-  ### DBH effect ----
+  ### DBH effect (and interaction with BATOT) ----
   # BE CAREFUL : DBH in this model is standardized
   # LAD = intercept at DBHstd = 0 <=> DBH = mean(dataset)
   if (mod_design$dbh_effect) {
     
     if (mod_design$dbh_per_sp) {
+      
+      if (mod_design$dbh_interaction_batot) {
+        stop("DEBUG: DBH:BA does not work for species-specific DBH effect yet")
+      }
       
       # Model the species-specific dbh effect within a normal distribution
       # centered around a single mean mean_dbh with a sd parameter sigma_dbh
@@ -913,7 +979,14 @@ initialise_model <- function(mod_design,
       # a single intercept for all species
       par_normal <- c(par_normal, "dbh")
       prior_normal_mean <- c(prior_normal_mean, 0)
-      prior_normal_sd <- c(prior_normal_sd, 0.2) 
+      prior_normal_sd <- c(prior_normal_sd, 0.2)
+      
+      if (mod_design$dbh_interaction_batot) {
+        # a single interaction effect with BATOT for all species
+        par_normal <- c(par_normal, "dbhXbatot")
+        prior_normal_mean <- c(prior_normal_mean, 0)
+        prior_normal_sd <- c(prior_normal_sd, 0.2)
+      }
     }
     
   } # Otherwise, no dbh effect
@@ -977,8 +1050,7 @@ initialise_model <- function(mod_design,
   bayesianSetup <- BayesianTools::createBayesianSetup(
     likelihood = compute_log_likelihood, 
     prior = priors,
-    names = par_names,
-    parallel = parallel
+    names = par_names
   )
   
   
