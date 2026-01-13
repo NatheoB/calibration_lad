@@ -9,11 +9,11 @@ calibrate_models <- function(models_setup,
     
     # Define settings ----
     settings <- list(iterations = mod_design$n_iterations, 
-                     nrChains = 1, burnin = 0, 
-                     gamma = NULL, eps = 0, e = 0.05, 
+                     nrChains = 3, nCR = 3, burnin = 0, 
+                     gamma = NULL, eps = 1e-6, e = 0.05, 
                      pCRupdate = TRUE, updateInterval = 50, thin = 1, 
                      adaptation = 0.2, Z = NULL, ZupdateFrequency = 10, 
-                     pSnooker = 0.3, DEpairs = 2, startValue = NULL, 
+                     pSnooker = 0.1, DEpairs = 3, startValue = NULL, 
                      consoleUpdates = 1, message = TRUE)
     
     
@@ -43,62 +43,81 @@ calibrate_models <- function(models_setup,
   
   # Initialize the logs ----
   
-  ## Create the folder
-  dir.create(logs_folder, showWarnings = FALSE)
+  # Create the folder
+  dir.create(logs_folder, showWarnings = FALSE, recursive = TRUE)
   
   # Unique log file per worker that close at the end of the function
-  log_file <- sprintf("logs/calib-mod%s-chain%i-worker%s-%s.log", 
+  log_file <- sprintf(file.path(logs_folder,"calib-mod%s-chain%i-worker%s-%s.log"), 
                       id_model, i_chain, 
                       Sys.getpid(), Sys.Date())
   
-  # Capture output (prints)
-  con <- file(log_file, open = "wt")
-  sink(con)
-
+  
+  # Redirect ALL stdout + C output
+  log_con <- file(log_file, open = "at")
+  
+  sink(log_con, type = "output", append = TRUE)
+  sink(log_con, type = "message", append = TRUE)
+  
+  # Close connections at the end of the function
+  on.exit({
+    sink(type = "message")
+    sink(type = "output")
+    close(log_con)
+  }, add = TRUE)
+  
+  
+  ### Manual logger
+  # R does not immediately write to disk.
+  # It puts the text in a buffer in memory
+  # Thus, flush() pushes everything in the buffer to disk
+  log_write <- function(...) {
+    cat(..., "\n")
+    flush.console()
+  }
+  
   
   # Calibrate the model ----
   ## Run the model by storing errors, warnings and messages
-  cat("----- Calibrating model", id_model, "/ chain", i_chain, "-----\n\n\n")
+  log_write("----- Calibrating model", id_model, "/ chain", i_chain, "-----\n")
   
   result <- tryCatch(
     {
       # Use withCallingHandlers to capture messages/warnings
       withCallingHandlers({
         
-        cat("Starting MCMC\n\n")
+        log_write("Starting MCMC\n")
         
         ## Set the model environment
         environment(calibrate_model) <- models_setup[[id_model]]
         
-        ## Calibrate the model
+        ### capture printed output
         out <- calibrate_model(sampling_algo)
         
         ## Add model IDs to output
         out$id_model <- id_model
         out$i_chain <- i_chain
         
-        cat("\n\nFinished MCMC\n\n")
+        log_write("\nFinished MCMC\n")
         
         out
       },
       message = function(m) {
-        cat("\n[MESSAGE] ", conditionMessage(m), "\n", file = con)
+        log_write("[MESSAGE]", conditionMessage(m))
         invokeRestart("muffleMessage")
       },
       warning = function(w) {
-        cat("\n[WARNING] ", conditionMessage(w), "\n", file = con)
+        log_write("[WARNING]", conditionMessage(w))
         invokeRestart("muffleWarning")
       })
     },
     error = function(e) {
-      cat("\n[ERROR] ", conditionMessage(e), "\n", file = con)
+      log_write("[ERROR]", conditionMessage(e))
       # Return a safe placeholder (e.g., NA or empty list)
-      list(failed = TRUE, params = params, result = NA)
+      list(failed = TRUE, error = conditionMessage(e))
     }
   )
   
-  cat("\n\n----- Finished model", id_model, "/ chain", i_chain, "-----")
-  close(con)
+  log_write("\n----- Finished model", id_model, "/ chain", i_chain, "-----\n")
   
   
   # Return the list of models' output ----

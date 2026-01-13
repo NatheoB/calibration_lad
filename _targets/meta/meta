@@ -1,95 +1,81 @@
 name|type|data|command|depend|seed|path|time|size|bytes|format|repository|iteration|parent|children|seconds|warnings|error
-threshold_punobs|stem|293598160ddf5514|ca3408317306c009|2c530c1562a7fbd1|-1081646114||t20376.4050304644s|s53b|53|rds|local|vector|||2.55||
-init_db_fp|stem|a119016e6efc6d6c|fbab130553f73741|2c530c1562a7fbd1|-1755535480|data/dataBase.RData|t19531.5447685185s|s562933b|562933|file|local|vector|||0||
-SEED|stem|a5405ff32868aa52|97bbbba232d78432|2c530c1562a7fbd1|350052512||t20376.4050318759s|s53b|53|rds|local|vector|||0||
-n_burning|stem|93ef336af509ac95|4845e990913b7429|2c530c1562a7fbd1|1542778852||t20376.4078645404s|s49b|49|rds|local|vector|||0||
-thresholds_punobs|stem|1ba0a4a6cf14078f|e066701eb956c7dd|2c530c1562a7fbd1|1470141032||t20396.6496290935s|s59b|59|rds|local|vector|||2.54|le package 'ggplot2' a été compilé avec la version R 4.5.2|
-species2calib|stem|9acb573f618cd392|2693e7a0dc9fb636|bc97ab432ba0e19b|-408251466||t20397.5368872899s|s171b|171|rds|local|vector|||0||
-get_sensors_to_calibrate|function|a6d1962bbbe4732e
-get_sensors_residuals|function|7bc412aa376b190d
-compute_sensors_residuals|function|a11aa4883aedcae1
-output_res_method1|stem|f86009ffad4e2531|92912e447bcdf035|3b8980cc2a254a98|2001807919||t20397.6682873974s|s162664539b|162664539|rds|local|vector|||111.92||
-sensors2calib|stem|3e81f54153e67b26|725841c6821e8399|81139abef40558e5|-2124383852||t20397.71161713s|s24335b|24335|rds|local|vector|||0.14||
-filter_sensors|function|090856b223bb0444
-filter_plots_from_sensors|function|37a3e6c82ae56a8a
-data_sensors_filtered|stem|3e81f54153e67b26|725841c6821e8399|81139abef40558e5|8501250||t20397.7247610148s|s24335b|24335|rds|local|vector|||0.14||
-data_plots_filtered|stem|ee2beaf23df333b1|56d0d4c45337a781|bf0b1fc5ac14765e|-524875119||t20397.7247619762s|s1314b|1314|rds|local|vector|||0||
-sensors2keep|stem||1c41fec1d362bfd7|65bb11fab11a14f2|1515870842||t20397.7365386856s||0|rds|local|vector|||0||impossible de trouver la fonction 'filter_sensors'
-n_analysis|stem|053e260b003209aa|c3cddfc9bb5b3f93|2c530c1562a7fbd1|1515411651||t20402.6081933752s|s53b|53|rds|local|vector|||0||
-n_chains|stem|5b51ac67c60457fe|bb375a30fa348382|2c530c1562a7fbd1|1902186402||t20404.3689976031s|s51b|51|rds|local|vector|||2.5|le package 'ggplot2' a été compilé avec la version R 4.5.2. le package 'e1071' a été compilé avec la version R 4.5.2|
-n_iterations|stem|3b407bbada8ac433|b106374aeb006b8c|2c530c1562a7fbd1|868853173||t20405.7838869285s|s53b|53|rds|local|vector|||2.53|le package 'ggplot2' a été compilé avec la version R 4.5.2. le package 'e1071' a été compilé avec la version R 4.5.2|
-n_posteriors_analysis|stem|16fa5541e324187f|283bbb5a254c0461|2c530c1562a7fbd1|-196317148||t20406.5925676906s|s51b|51|rds|local|vector|||2.5|le package 'ggplot2' a été compilé avec la version R 4.5.2. le package 'e1071' a été compilé avec la version R 4.5.2|
-lads_method1|stem|7c20f0df92f9a250|7bf7e416bc44e0fa|2c530c1562a7fbd1|1419410004||t20412.8023308289s|s1297b|1297|rds|local|vector|||2.79|le package 'ggplot2' a été compilé avec la version R 4.5.2. remplacement de l'importation précédente 'httr::config' par 'plotly::config' lors du chargement de 'SamsaRaLight'. remplacement de l'importation précédente 'ggplot2::last_plot' par 'plotly::last_plot' lors du chargement de 'SamsaRaLight'. le package 'e1071' a été compilé avec la version R 4.5.2|
-PARALLEL_MOD|stem|6030f72b7acef4d1|1c5923e7076a213a|2c530c1562a7fbd1|-846308656||t20412.8178116715s|s48b|48|rds|local|vector|||2.74|le package 'ggplot2' a été compilé avec la version R 4.5.2. remplacement de l'importation précédente 'httr::config' par 'plotly::config' lors du chargement de 'SamsaRaLight'. remplacement de l'importation précédente 'ggplot2::last_plot' par 'plotly::last_plot' lors du chargement de 'SamsaRaLight'. le package 'e1071' a été compilé avec la version R 4.5.2|
-PARALLEL_MODE|stem|348b083f608e0a8b|5ee6da8f67b95a43|2c530c1562a7fbd1|-1155770587||t20425.6778491184s|s48b|48|rds|local|vector|||2.73|le package 'ggplot2' a été compilé avec la version R 4.5.2. remplacement de l'importation précédente 'httr::config' par 'plotly::config' lors du chargement de 'SamsaRaLight'. remplacement de l'importation précédente 'ggplot2::last_plot' par 'plotly::last_plot' lors du chargement de 'SamsaRaLight'. le package 'e1071' a été compilé avec la version R 4.5.2|
-N_CHAINS|stem|93ab4aa22d78af41|2eac0bc41fe1538f|2c530c1562a7fbd1|1849589608||t20425.6778499426s|s51b|51|rds|local|vector||N_CHAINS_1383ef88fd9bbb0e|0||
-models_summary_pointwise|stem|df9a0abb635bced6|0a9d8d0c6dbe3329|d6c7613e17c533f7|128290512||t20425.4918319669s||56982|rds|local|vector|||0.06||pas de méthode pour 'getSample' applicable pour un objet de classe 'NULL'
-models_output_0a2d15bd5093361f|branch|ca838c3bbf657e71|e1a4a1715090cd8f|15acf6a304b1521c|1813777296||t20425.7283922211s|s1348486b|1348486|rds|local|list|models_output||640.53|le package 'ggplot2' a été compilé avec la version R 4.5.2. remplacement de l'importation précédente 'httr::config' par 'plotly::config' lors du chargement de 'SamsaRaLight'. remplacement de l'importation précédente 'ggplot2::last_plot' par 'plotly::last_plot' lors du chargement de 'SamsaRaLight'. le package 'e1071' a été compilé avec la version R 4.5.2|
-models_output_344c8c3e9cad5c8b|branch|0bae33373f54a5b8|e1a4a1715090cd8f|15acf6a304b1521c|-1234343080||t20425.728394151s|s1345102b|1345102|rds|local|list|models_output||640.35|le package 'ggplot2' a été compilé avec la version R 4.5.2. remplacement de l'importation précédente 'httr::config' par 'plotly::config' lors du chargement de 'SamsaRaLight'. remplacement de l'importation précédente 'ggplot2::last_plot' par 'plotly::last_plot' lors du chargement de 'SamsaRaLight'. le package 'e1071' a été compilé avec la version R 4.5.2|
-models_output_823e4263b531e097|branch|8186ec90524bd224|efcc69d406f718b5|774527329dae21de|-1220582872||t20425.7284080161s||1348852|rds|local|list|models_output||1084.88|le package 'ggplot2' a été compilé avec la version R 4.5.2. remplacement de l'importation précédente 'httr::config' par 'plotly::config' lors du chargement de 'SamsaRaLight'. remplacement de l'importation précédente 'ggplot2::last_plot' par 'plotly::last_plot' lors du chargement de 'SamsaRaLight'. le package 'e1071' a été compilé avec la version R 4.5.2|impossible de fermer la connexion 'message' en sortie
-models_output_17687fccc39a9ccf|branch|5f02b19067ad8cbc|3663a7871a9e97fe|0aca0adb97ce2498|-488121598||t20425.7923819575s|s1338926b|1338926|rds|local|list|models_output||336.39||
-models_output_67764bb6393a2ac3|branch|238bb6069d81cdaf|3663a7871a9e97fe|0aca0adb97ce2498|145903224||t20425.7924414517s|s1336703b|1336703|rds|local|list|models_output||339.49|le package 'ggplot2' a été compilé avec la version R 4.5.2. remplacement de l'importation précédente 'httr::config' par 'plotly::config' lors du chargement de 'SamsaRaLight'. remplacement de l'importation précédente 'ggplot2::last_plot' par 'plotly::last_plot' lors du chargement de 'SamsaRaLight'. le package 'e1071' a été compilé avec la version R 4.5.2|
-models_output_b2cddd6d03fb1fdf|branch|3236f515f574af25|3663a7871a9e97fe|0aca0adb97ce2498|327810820||t20425.7924510251s|s1337738b|1337738|rds|local|list|models_output||340.15|le package 'ggplot2' a été compilé avec la version R 4.5.2. remplacement de l'importation précédente 'httr::config' par 'plotly::config' lors du chargement de 'SamsaRaLight'. remplacement de l'importation précédente 'ggplot2::last_plot' par 'plotly::last_plot' lors du chargement de 'SamsaRaLight'. le package 'e1071' a été compilé avec la version R 4.5.2|
-models_output|pattern|9670876c64cb04a2|3663a7871a9e97fe||1180655238||||4013367|rds|local|list||models_output_67764bb6393a2ac3*models_output_b2cddd6d03fb1fdf*models_output_17687fccc39a9ccf|1016.03||
-models_output_list_67764bb6393a2ac3|branch|d3cca7e50b9bafaa|3663a7871a9e97fe|96aef1b0f39c949f|138342641||t20425.8239111371s|s1336236b|1336236|rds|local|list|models_output_list||173.08|le package 'ggplot2' a été compilé avec la version R 4.5.2. remplacement de l'importation précédente 'httr::config' par 'plotly::config' lors du chargement de 'SamsaRaLight'. remplacement de l'importation précédente 'ggplot2::last_plot' par 'plotly::last_plot' lors du chargement de 'SamsaRaLight'. le package 'e1071' a été compilé avec la version R 4.5.2|
-models_output_list_17687fccc39a9ccf|branch|f838e063ee82c709|3663a7871a9e97fe|96aef1b0f39c949f|913072294||t20425.8239359489s|s1334933b|1334933|rds|local|list|models_output_list||174.31|le package 'ggplot2' a été compilé avec la version R 4.5.2. remplacement de l'importation précédente 'httr::config' par 'plotly::config' lors du chargement de 'SamsaRaLight'. remplacement de l'importation précédente 'ggplot2::last_plot' par 'plotly::last_plot' lors du chargement de 'SamsaRaLight'. le package 'e1071' a été compilé avec la version R 4.5.2|
-models_output_list_b2cddd6d03fb1fdf|branch|88635fb464d28cc9|3663a7871a9e97fe|96aef1b0f39c949f|-179031440||t20425.8239365039s|s1336568b|1336568|rds|local|list|models_output_list||174.78|le package 'ggplot2' a été compilé avec la version R 4.5.2. remplacement de l'importation précédente 'httr::config' par 'plotly::config' lors du chargement de 'SamsaRaLight'. remplacement de l'importation précédente 'ggplot2::last_plot' par 'plotly::last_plot' lors du chargement de 'SamsaRaLight'. le package 'e1071' a été compilé avec la version R 4.5.2|
-models_summary_pointwise_list_a9f0416b9cda20f8|branch|149dda50a8296549|24ee10000dbd3828|c3135bcfc7cbaf4d|-427074921||t20425.8243860266s|s36432b|36432|rds|local|list|models_summary_pointwise_list||32.86||
-models_summary_pointwise_list_cc757c58921b8012|branch|8ede328ad2b0dcea|24ee10000dbd3828|1ab89f1fc17cd8a6|2057693332||t20425.8243958168s|s36225b|36225|rds|local|list|models_summary_pointwise_list||33.77||
-models_summary_pointwise_list_a9ab314e51fe718e|branch|2034c23518372b21|24ee10000dbd3828|a63ffcafbf6540c1|1238797141||t20425.8243965536s|s37624b|37624|rds|local|list|models_summary_pointwise_list||33.68||
-plot_infos_fp|stem|410d6b2359d6148a|55107e44f65ca9b4|2c530c1562a7fbd1|1058822048|data/plot_infos.csv|t20430.427554069s|s2243b|2243|file|local|vector|||5.31|le package 'ggplot2' a été compilé avec la version R 4.5.2. remplacement de l'importation précédente 'httr::config' par 'plotly::config' lors du chargement de 'SamsaRaLight'. remplacement de l'importation précédente 'ggplot2::last_plot' par 'plotly::last_plot' lors du chargement de 'SamsaRaLight'. le package 'e1071' a été compilé avec la version R 4.5.2|
-init_db|stem|5d1a0b58e241a683|91145741294a7edc|f444c685f2a53d37|-2136484936||t20430.4278966603s|s284418b|284418|rds|local|vector|||0.78||
-data_calib|stem|f2ca8c72e753e6f3|cd01bbd039806451|1045f1cdc4e96231|794142540||t20434.6302069633s|s642396b|642396|rds|local|vector|||95.55|We added a 0.01m buffer around the core polygon because of difficulties of including some points.... We added a 0.01m buffer around the core polygon because of difficulties of including some points.... We added a 0.01m buffer around the core polygon because of difficulties of including some points.... We added a 0.01m buffer around the core polygon because of difficulties of including some points.... We added a 0.01m buffer around the core polygon because of difficulties of including some points.... We added a 0.01m buffer around the core polygon because of difficulties of including some points...|
-data_rad|stem|f0063bcdcafa837a|78b49b62dfa8a771|f75f30b8805da25e|-699444806||t20434.7155619467s|s3395b|3395|rds|local|vector|||13.41||
-sp_calib_occ|stem|41586be37115d82c|a39aed8c294a4266|434f509a73a7c6f8|-617375050||t20434.715564482s|s817b|817|rds|local|vector|||0.12||
-output_pacl_method1|stem|3de0a068e48a77bd|aa91d296e4d57021|9996e78f3c4970c7|1908348575||t20434.7236899224s|s12521768b|12521768|rds|local|vector|||701.25||
-data_sensors_punobs|stem|b6dfc310ebb18888|f572b4f2a095e539|01fcf244cf640e90|1293710853||t20434.7239348268s|s44760b|44760|rds|local|vector|||21.06||
-output_lad_method1|stem|0f4eeee2098848d2|f7762e486b3b1af4|45c4ecd13c2a0da2|1039143718||t20434.7250032115s|s57298b|57298|rds|local|vector|||92.08||
-best_lad_method1|stem|e1a1b49cd7c2c583|bfe89ca5f5f380e2|ec3ef23135b05329|-481307556||t20434.7256022738s|s55b|55|rds|local|vector|||0||
-CHAINS|stem|5b51ac67c60457fe|bb375a30fa348382|2c530c1562a7fbd1|2101200832||t20434.7257203979s|s51b|51|rds|local|vector||CHAINS_9f0cda529028d8d9|2.64|le package 'ggplot2' a été compilé avec la version R 4.5.2. remplacement de l'importation précédente 'httr::config' par 'plotly::config' lors du chargement de 'SamsaRaLight'. remplacement de l'importation précédente 'ggplot2::last_plot' par 'plotly::last_plot' lors du chargement de 'SamsaRaLight'. le package 'e1071' a été compilé avec la version R 4.5.2|
-models_output_list_88604ef2b023a372|branch|9d1ca37840b2391e|3663a7871a9e97fe|6aa455b6d53014fa|-623897079||t20437.0407652295s|s1963708b|1963708|rds|local|list|models_output_list||194372.89|le package 'ggplot2' a été compilé avec la version R 4.5.2. remplacement de l'importation précédente 'httr::config' par 'plotly::config' lors du chargement de 'SamsaRaLight'. remplacement de l'importation précédente 'ggplot2::last_plot' par 'plotly::last_plot' lors du chargement de 'SamsaRaLight'. le package 'e1071' a été compilé avec la version R 4.5.2|
-models_output_list_d2147011fc8ba33d|branch|e74e3299ff6824b7|3663a7871a9e97fe|6aa455b6d53014fa|-1860521245||t20437.0482951142s|s1914025b|1914025|rds|local|list|models_output_list||195024.43|le package 'ggplot2' a été compilé avec la version R 4.5.2. remplacement de l'importation précédente 'httr::config' par 'plotly::config' lors du chargement de 'SamsaRaLight'. remplacement de l'importation précédente 'ggplot2::last_plot' par 'plotly::last_plot' lors du chargement de 'SamsaRaLight'. le package 'e1071' a été compilé avec la version R 4.5.2|
-models_output_list_57f4dfe65017b83d|branch|27448995e1484941|3663a7871a9e97fe|6aa455b6d53014fa|2132240524||t20437.0629010665s|s1973022b|1973022|rds|local|list|models_output_list||196283.55|le package 'ggplot2' a été compilé avec la version R 4.5.2. remplacement de l'importation précédente 'httr::config' par 'plotly::config' lors du chargement de 'SamsaRaLight'. remplacement de l'importation précédente 'ggplot2::last_plot' par 'plotly::last_plot' lors du chargement de 'SamsaRaLight'. le package 'e1071' a été compilé avec la version R 4.5.2|
-models_summary_pointwise_list_5c477a7ab65716d9|branch|95cac2f953d2e620|24ee10000dbd3828|da0d3c0fe24deecb|1010208430||t20437.0856895117s|s762556b|762556|rds|local|list|models_summary_pointwise_list||3855.39||
-models_summary_pointwise_list_7089e6bce79bee30|branch|6f1c752d150d2753|24ee10000dbd3828|4d04ec5d06365f28|-255620303||t20437.0925162062s|s605512b|605512|rds|local|list|models_summary_pointwise_list||3808.91||
-models_summary_pointwise_list_77ac835e36020071|branch|2c9e43d1804bacaf|24ee10000dbd3828|aa1c34ec2a40bf64|-1877862222||t20437.0998711578s|s748194b|748194|rds|local|list|models_summary_pointwise_list||3184.64||
-LAD_CONTROL|stem|4a0a1c46d699195e|f462e175ea62a347|2c530c1562a7fbd1|1793763913||t20437.5711189552s|s51b|51|rds|local|vector|||2.72|le package 'ggplot2' a été compilé avec la version R 4.5.2. remplacement de l'importation précédente 'httr::config' par 'plotly::config' lors du chargement de 'SamsaRaLight'. remplacement de l'importation précédente 'ggplot2::last_plot' par 'plotly::last_plot' lors du chargement de 'SamsaRaLight'. le package 'e1071' a été compilé avec la version R 4.5.2|
-exp_design|stem|8cf05978d2a41562|0bec87d79869afdb|1b53afa2a8427ecd|-1766452664||t20437.7035943683s|s438b|438|rds|local|vector|||3.06|le package 'ggplot2' a été compilé avec la version R 4.5.2. remplacement de l'importation précédente 'httr::config' par 'plotly::config' lors du chargement de 'SamsaRaLight'. remplacement de l'importation précédente 'ggplot2::last_plot' par 'plotly::last_plot' lors du chargement de 'SamsaRaLight'. le package 'e1071' a été compilé avec la version R 4.5.2|
-id_models|stem|6445c14979727b38|bd00d0fff1226f6e|f899e7913bdcecfd|1843632258||t20437.7035951497s|s48b|48|rds|local|vector||id_models_6e95f3b2b5476d92|0||
-models_setup|stem|513658ae77858ab7|f4e99a225fa99521|e4565bc470536b33|-791921158||t20437.7036072875s|s2596577b|2596577|rds|local|vector|||0.68||
-models_output_list_657c552bf8f38519|branch|1d3b04c05876d4bc|3663a7871a9e97fe|f2e047aae8d95204|-1589867109||t20439.9571492982s|s2953981b|2953981|rds|local|list|models_output_list||194705.44||
-models_output_list|pattern|a30910cb26b75ee3|3663a7871a9e97fe||1336409512||||2953981|rds|local|list||models_output_list_657c552bf8f38519|194705.44||
-models_summary_pointwise_list_d747d93d629df44c|branch|aa2f68d1e900f48b|24ee10000dbd3828|dd52aabf2621b32e|690275321||t20440.0690986812s|s3214913b|3214913|rds|local|list|models_summary_pointwise_list||9671.34||
-models_summary_pointwise_list|pattern|0778eb4dbf5c8246|24ee10000dbd3828||1119156900||||3214913|rds|local|list||models_summary_pointwise_list_d747d93d629df44c|9671.34||
-models_comparison|stem|d01356a6ab51758b|c9a79c2e7707ef1d|10410da9ce38b34d|777145309||t20440.069123335s|s357b|357|rds|local|vector|||1.76|9 (1.4%) p_waic estimates greater than 0.4. We recommend trying loo instead.. Some Pareto k diagnostic values are too high. See help('pareto-k-diagnostic') for details.|
-models_evaluation|stem|955226253ea4b395|5e58efc7501e5160|453e45322b3d0192|-199941792||t20440.0691394607s|s3235738b|3235738|rds|local|vector|||0.6||
-models_output_fp|stem|641c738dc30b7570|5102ad19cb2acf7e|6af0f97f9792031c|-1176732005||t20440.0695740393s|s44b|44|rds|local|vector|||3||
-output_params|stem|4aa09dd3e76e8835|fe40d24bfa84d67e|181d650d37badd22|923279739||t20440.5530655557s|s94538b|94538|rds|local|vector|||0.05||
-comput_output_light_list|function|aceec28da7156e29
-comput_output_light|function|aceec28da7156e29
-data_output_light_list|stem|ad27eb2493a9d193|eee72c279d787423|fc0d8fc06422bcca|-1166542436||t20441.0035574689s|s209423963b|209423963|rds|local|vector|||28432.56||
-data_output_light|stem|e5e75d2f32132fea|d49bf95467002da2|1da941b23f7725dc|-520488082||t20441.003774213s|s1164180b|1164180|rds|local|vector|||15.61||
-data_output_tree|stem|366ef14ca3d4f83f|3c9dcea325da1e20|baa51a192b935776|-242062077||t20441.3425224813s|s827987b|827987|rds|local|vector|||22.81||
-get_summary_pointwise_models|function|123d5b1543b57d8e
+init_db_fp|stem|a119016e6efc6d6c|fbab130553f73741|2c530c1562a7fbd1|-1755535480|data/dataBase.RData|t19531.5447685185s|s562933b|562933|file|local|vector|||2.92|le package 'ggplot2' a été compilé avec la version R 4.5.2. le package 'e1071' a été compilé avec la version R 4.5.2|
+plot_infos_fp|stem|410d6b2359d6148a|55107e44f65ca9b4|2c530c1562a7fbd1|1058822048|data/plot_infos.csv|t20430.427554069s|s2243b|2243|file|local|vector|||0||
+SEED|stem|a5405ff32868aa52|97bbbba232d78432|2c530c1562a7fbd1|350052512||t20465.6268676243s|s53b|53|rds|local|vector|||0||
+LAD_CONTROL|stem|4a0a1c46d699195e|f462e175ea62a347|2c530c1562a7fbd1|1793763913||t20465.6268679939s|s51b|51|rds|local|vector|||0||
+init_db_raw|stem|34b471063d008ffa|91145741294a7edc|5b268750a8f3caa6|-96736053||t20465.6268724704s|s284844b|284844|rds|local|vector|||0.28||
+init_db|stem|31f786e479178747|f48d13a8ba4fd3ba|f550d484d68a591b|-2136484936||t20465.6268761184s|s284603b|284603|rds|local|vector|||0.22||
+data_rad|stem|f0063bcdcafa837a|78b49b62dfa8a771|d1707e6411abd6bb|-699444806||t20465.6272016508s|s3395b|3395|rds|local|vector|||15.75||
+plots_stands_fp|stem|dd79c9de587b727c|7b874843c5bf589e|d54cd34e75861843|-563976832||t20465.6387084552s|s73b|73|rds|local|vector|||819.5||
+lads_method1|stem|7c20f0df92f9a250|7bf7e416bc44e0fa|2c530c1562a7fbd1|1419410004||t20465.6862991652s|s1297b|1297|rds|local|vector|||4.55|le package 'ggplot2' a été compilé avec la version R 4.5.2. le package 'e1071' a été compilé avec la version R 4.5.2|
+data_stands|stem|3551183a4c0926b2|ba92b6707291198c|459fd6ddeea1cd25|1852838586||t20465.6864193382s|s800764b|800764|rds|local|vector|||10.17|We added a 0.01m buffer around the core polygon because of difficulties of including some points.... We added a 0.01m buffer around the core polygon because of difficulties of including some points.... We added a 0.01m buffer around the core polygon because of difficulties of including some points...|
+output_pacl_method1|stem|a584dabdad5eb667|1cde384efdfde2ac|e899201321431ca5|1908348575||t20465.7007638959s|s4259608b|4259608|rds|local|vector|||800.51||
+output_punobs|stem|663de67e23f79044|c0c333d6bf7ef7a6|7c6a9c84a5461ed6|-902220049||t20465.7636892104s|s9230b|9230|rds|local|vector|||1.71||
+best_lad_method1|stem|ef6ea40568c2ecbd|bfe89ca5f5f380e2|261e9a9ec5b4dd26|-481307556||t20465.7659171445s|s55b|55|rds|local|vector|||0||
+lad_convergence_threshold|stem|93ab4aa22d78af41|2eac0bc41fe1538f|2c530c1562a7fbd1|-1325381349||t20465.7712858836s|s51b|51|rds|local|vector|||2.86|le package 'ggplot2' a été compilé avec la version R 4.5.2. le package 'e1071' a été compilé avec la version R 4.5.2|
+output_lad_method1|stem|895925d3aa2db7a7|da42e4ba80d9601a|f9f375a8be99efb8|1039143718||t20465.7723441138s|s22187b|22187|rds|local|vector|||91.17||
+models_output_list_657c552bf8f38519|branch|fe36628cde25a6e4|3663a7871a9e97fe|7b2570e1e26c7000|-1589867109||t20466.6864986528s|s1461094b|1461094|rds|local|list|models_output_list||167.88||
+CHAINS|stem|93ab4aa22d78af41|2eac0bc41fe1538f|2c530c1562a7fbd1|2101200832||t20466.6883736261s|s51b|51|rds|local|vector||CHAINS_1383ef88fd9bbb0e|2.77|le package 'ggplot2' a été compilé avec la version R 4.5.2. le package 'e1071' a été compilé avec la version R 4.5.2|
+models_output_list_deb518af66be6eff|branch|95c6485819a1bd4a|5cd387beb97f8246|a50608abbb154c13|-1259572224||t20466.7011520753s|s1459097b|1459097|rds|local|list|models_output_list||290.71|le package 'ggplot2' a été compilé avec la version R 4.5.2. le package 'e1071' a été compilé avec la version R 4.5.2|
+models_output_list_6864db65359afbdc|branch|02753c8896ec8e1b|5cd387beb97f8246|a50608abbb154c13|1003162570||t20466.701169084s|s1460549b|1460549|rds|local|list|models_output_list||290.92|le package 'ggplot2' a été compilé avec la version R 4.5.2. le package 'e1071' a été compilé avec la version R 4.5.2|
+models_summary_pointwise_list_898a889d788b6214|branch|8210978ee41bf724|52cd37b26135bc4d|602d6a74422edb18|161011000||t20466.7060858975s|s285606b|285606|rds|local|list|models_summary_pointwise_list||137.57||
+models_summary_pointwise_list_44c74f2426b35c4b|branch|50749418f39079ca|52cd37b26135bc4d|650aba2d0ee96ad5|667220349||t20466.7060940468s|s181296b|181296|rds|local|list|models_summary_pointwise_list||138.39||
+N_CHAINS|stem|5b51ac67c60457fe|bb375a30fa348382|2c530c1562a7fbd1|1849589608||t20466.7279033927s|s51b|51|rds|local|vector|||2.77|le package 'ggplot2' a été compilé avec la version R 4.5.2. le package 'e1071' a été compilé avec la version R 4.5.2|
+chains|stem|6445c14979727b38|bc19a8de974dbf7d|e8aac7900289fa41|-551368053||t20466.7279053861s|s48b|48|rds|local|vector||chains_6e95f3b2b5476d92|0||
+models_output_list|pattern|c68390612bf0db55|5cd387beb97f8246||1336409512||||1977761|rds|local|list||models_output_list_cb16f964e8634c3b|522.75||
+models_summary_pointwise_list_ae86ec80dbda6fb5|branch|ac90abae0a58e81a|52cd37b26135bc4d|a1da20c551c2b09e|488050929||t20466.7446625646s|s298198b|298198|rds|local|list|models_summary_pointwise_list||85.42||
+models_summary_pointwise_list|pattern|2cbac04602d083d6|52cd37b26135bc4d||1119156900||||298198|rds|local|list||models_summary_pointwise_list_ae86ec80dbda6fb5|85.42||
+models_comparison|stem|a92c65b11a3ddb68|c9a79c2e7707ef1d|fe0d907e6787cb36|777145309||t20466.7446676704s|s352b|352|rds|local|vector|||0.36|109 (16.0%) p_waic estimates greater than 0.4. We recommend trying loo instead.. Some Pareto k diagnostic values are too high. See help('pareto-k-diagnostic') for details.|
+models_evaluation|stem|8e9da8d7426c56ec|5e58efc7501e5160|7d91413d84c52bc7|-199941792||t20466.7446702373s|s269499b|269499|rds|local|vector|||0.16||
+models_output_fp|stem|641c738dc30b7570|9a1f326e29712c43|23bfcc9eeeb96dd6|-1176732005||t20466.7446783715s|s44b|44|rds|local|vector|||0.5||
+output_params|stem|07e2b22041b0bcb7|a867a6fec2574c94|8e16964f730ad23c|923279739||t20466.7310657339s||4162|rds|local|vector|||0.16||ℹ In index: 1. ℹ With name: 1. Caused by error in `map()`: ℹ In index: 1. ℹ With name: models_output_list_cb16f964e8634c3b. Caused by error in `start:end`: ! l'argument est de longueur nulle
+get_summary_pointwise_models|function|d99942830ae9bcb4
 save_models|function|546dacfc5adec8c9
 compute_output_tree|function|cd4a816556942560
-get_sensors_punobs|function|35b290db7a76c098
-get_radiation_dataset|function|eb9decc8d84657a8
-create_experimental_design|function|7307ce6dcbc12c77
-get_sensors_pacl_sitespecificLAD|function|483404addc347a90
-calibrate_models|function|f58173bde5cdd992
+get_sensors_punobs|function|ebb54ae8bd7bf8b9
+get_radiation_dataset|function|39e5cc378b2dcf74
+create_experimental_design|function|3207523708b406f0
+plot_stands|function|de26109794c04dfb
+get_sensors_pacl_sitespecificLAD|function|3cfdcd1f3006ac15
+calibrate_models|function|044eca50d50d6a36
 compare_models|function|43ddca382f52cb06
 evaluate_models|function|c7b2efc9096635e1
-initialise_model|function|69bae78f8a889325
-plot_stand|function|bf7f498b2f845daa
+initialise_model|function|a6f2f55c603995af
 get_occurences_species2calib|function|91ff075b9f01e71e
 get_output_params|function|acb25f82b678f919
-fit_lad_method1|function|79486f08d87a2f29
-load_database_from_rdata|function|6e223050f09f8b91
+fit_lad_method1|function|bc2d94ddda3012c4
+load_database_from_rdata|function|6b13924ab878d5b9
 compute_competition_trees|function|a53cf9616ce1e5a4
 compute_output_stand|function|d6b8b6b0af4cbf74
+clean_database|function|8de9fc07d61b2456
 bind_output_light|function|77f9f378d65e0d60
 compute_output_light|function|df7c58fb224222ac
-initialise_models|function|539ea034cf905d27
-create_calibration_stands|function|c8e4553cf50d3f52
-data_output_stand|stem|59eb88df9088a156|e8d5ba4a99ba8099|599dda3a93ae0f77|-982603532||t20441.3435140595s|s3409b|3409|rds|local|vector|||8.72||
+initialise_models|function|c93542bbb1134684
+create_sl_stands|function|cd1ead8ad59e9e19
+exp_design|stem|7d6d28f161d5f356|0bec87d79869afdb|36ab1c2cd74050c2|-1766452664||t20466.7464755038s|s490b|490|rds|local|vector|||2.65|le package 'ggplot2' a été compilé avec la version R 4.5.2. le package 'e1071' a été compilé avec la version R 4.5.2|
+id_models|stem|6445c14979727b38|bd00d0fff1226f6e|484c88ae3ca6b0bf|1843632258||t20466.7464763555s|s48b|48|rds|local|vector||id_models_6e95f3b2b5476d92|0||
+models_setup|stem|498093c22009468e|242e1f6201ea7319|098002d319989ec4|-791921158||t20466.7464874856s|s2832210b|2832210|rds|local|vector|||0.59||
+models_output_list_cb16f964e8634c3b|branch|a0134672511e249b|5cd387beb97f8246|75801c6612a2da7a|-530860350||t20466.7436705033s||1977761|rds|local|list|models_output_list||0.04|impossible d'ouvrir le fichier 'logs/calib/calib-mod1-chain1-worker1908-2026-01-13.log' : No such file or directory|impossible d'ouvrir la connexion
+get_summary_pointwise_models|function|032fc58bb13fcb51
+save_models|function|546dacfc5adec8c9
+compute_output_tree|function|cd4a816556942560
+get_sensors_punobs|function|ebb54ae8bd7bf8b9
+get_radiation_dataset|function|39e5cc378b2dcf74
+create_experimental_design|function|3207523708b406f0
+plot_stands|function|de26109794c04dfb
+get_sensors_pacl_sitespecificLAD|function|3cfdcd1f3006ac15
+calibrate_models|function|8d5e1ffe9cdd84f6
+compare_models|function|43ddca382f52cb06
+evaluate_models|function|c7b2efc9096635e1
+initialise_model|function|a6f2f55c603995af
+get_occurences_species2calib|function|91ff075b9f01e71e
+get_output_params|function|acb25f82b678f919
+fit_lad_method1|function|bc2d94ddda3012c4
+load_database_from_rdata|function|6b13924ab878d5b9
+compute_competition_trees|function|a53cf9616ce1e5a4
+compute_output_stand|function|d6b8b6b0af4cbf74
+clean_database|function|8de9fc07d61b2456
+bind_output_light|function|77f9f378d65e0d60
+compute_output_light|function|df7c58fb224222ac
+initialise_models|function|c93542bbb1134684
+create_sl_stands|function|cd1ead8ad59e9e19

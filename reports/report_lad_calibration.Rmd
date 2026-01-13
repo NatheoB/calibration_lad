@@ -248,6 +248,7 @@ As a preliminary analysis, we tried to fit a mean LAD value for each sensor of e
 
 ```{r}
 tar_load(output_lad_method1)
+tar_load(lad_convergence_threshold)
 
 output_lad_method1 <- output_lad_method1 %>% 
   dplyr::group_by(site) %>% 
@@ -264,11 +265,13 @@ n_plt <- length(unique(output_lad_method1$site)) %/% n_facets
 for (i in 1:n_plt) {
   
   tmp_plt <- output_lad_method1 %>% 
-    dplyr::filter(site %in% unique(output_lad_method1$site)[1:9*i]) %>% 
+    dplyr::filter(site %in% unique(output_lad_method1$site)[(1:9) + (i-1)*9]) %>% 
     
     ggplot(aes(y = best_lad, x = id_sensor, color = converged)) +
     facet_wrap(~site_label, scales = "free_x") +
     geom_point() +
+    geom_hline(yintercept = lad_convergence_threshold,
+               linetype = "dashed") +
     scale_color_manual(values = c("salmon", "forestgreen")) +
     theme_bw() +
     xlab("Id of the sensor") +
@@ -284,28 +287,28 @@ Many sensors did not converged (i.e. best fitting LAD was 5 as the residuals fun
 # Fit logistic regression model
 
 ## Fit different models
-model_linear <- glm(converged ~ punobs_horizontal + PACLobs, 
+model_linear <- glm(converged ~ punobs + pacl_obs, 
                     data = output_lad_method1, 
                     family = binomial)
 
-model_poly <- glm(converged ~ poly(punobs_horizontal, 2) + poly(PACLobs, 2) + I(punobs_horizontal*PACLobs),
+model_poly <- glm(converged ~ poly(punobs, 2) + poly(pacl_obs, 2) + I(punobs*pacl_obs),
                   data = output_lad_method1, 
                   family = binomial)
 
-model_svm <- e1071::svm(as.factor(converged) ~ punobs_horizontal + PACLobs, 
+model_svm <- e1071::svm(as.factor(converged) ~ punobs + pacl_obs, 
                         data = output_lad_method1, 
                         kernel = "radial", cost = 1, gamma = 0.1)
 
-model_gam <- mgcv::gam(converged ~ s(punobs_horizontal, PACLobs), 
+model_gam <- mgcv::gam(converged ~ s(punobs, pacl_obs), 
                        data = output_lad_method1, family = binomial)
 
 
 ## Create a grid to draw the decision boundary
-xrange <- range(output_lad_method1$PACLobs)
-yrange <- range(output_lad_method1$punobs_horizontal)
+xrange <- range(output_lad_method1$pacl_obs)
+yrange <- range(output_lad_method1$punobs)
 grid <- expand.grid(
-  PACLobs = seq(xrange[1], xrange[2], length.out = 200),
-  punobs_horizontal = seq(yrange[1], yrange[2], length.out = 200)
+  pacl_obs = seq(xrange[1], xrange[2], length.out = 200),
+  punobs = seq(yrange[1], yrange[2], length.out = 200)
 )
 
 ## Predict probabilities
@@ -314,7 +317,7 @@ grid$pred <- predict(model_svm, newdata = grid)
 
 ## Plot the converged sensors all site confounded ----
 ggplot(data = output_lad_method1,
-                  mapping = aes(y = punobs_horizontal * 100, x = PACLobs * 100,
+                  mapping = aes(y = punobs * 100, x = pacl_obs * 100,
                                 color = converged)) +
   geom_point() +
   scale_color_manual(values = c("salmon", "forestgreen")) +
@@ -591,7 +594,7 @@ The mean LAD over all sensors that converged was about `r round(mean(output_lad_
 100,000 iterations and 3 chains
 
 ```{r}
-load("output/calib/out_20251207_completeModel.Rdata")
+load("output/calib/out_20251227_completeModelv2.Rdata")
 
 # Parameters
 n_analysis_clean <- 1000
@@ -606,6 +609,7 @@ out_list$exp_design
 ```{r}
 out_list$output %>% 
   purrr::map(~data.frame(
+    model = .x$id_model,
     chain = .x$i_chain,
     time_hours = as.numeric(.x$computation_time, 
                             units = "hours"))) %>% 
@@ -619,28 +623,38 @@ out_list$output %>%
 ```{r}
 trace_clean <- out_list$output %>% 
   purrr::map(~.x$output) %>% 
-  setNames(out_list$output %>% purrr::map(~.x$i_chain)) %>% 
+  setNames(out_list$output %>% purrr::map(~paste(.x$id_model, .x$i_chain, sep = "_"))) %>% 
   purrr::map(~.x %>% 
                getSample(start = 0, 
                          end = NULL, 
-                         thin = 1,
+                         thin = 10,
                          coda = TRUE) %>%
                purrr::map(~as.data.frame(.x) %>%
                             dplyr::mutate(iteration = row_number()) %>%
                             dplyr::relocate(iteration)) %>%
                dplyr::bind_rows(.id = "subchain")) %>%
-  dplyr::bind_rows(.id = "chain") %>% 
+  dplyr::bind_rows(.id = "id_simu") %>%
+  tidyr::separate(id_simu, c("model", "chain"), sep = "_") %>% 
   
   # Called the non species-specific model a mean species 
-  dplyr::select(chain, subchain, iteration,
+  dplyr::select(model, chain, subchain, iteration,
                 sigma_log, sigma_site_log, sigma_origin_log,
                 sigma_intercept_log, sigma_dbh_log,
+                intercept, dbh,
                 mean_intercept, mean_dbh, rho_raw,
                 contains("z_intercept"), 
                 contains("z_dbh")) %>% 
-  tidyr::pivot_longer(!c(chain, subchain, iteration),
+  
+  dplyr::mutate(
+    mean_intercept = coalesce(intercept, mean_intercept),
+    mean_dbh = coalesce(dbh, mean_dbh)
+  ) %>% 
+  dplyr::select(-c(intercept, dbh)) %>% 
+  
+  tidyr::pivot_longer(!c(model, chain, subchain, iteration),
                       names_to = "parameter",
                       values_to = "estimate")
+
 
 
 # Model sigmas
@@ -650,13 +664,12 @@ trace_clean %>%
   
   ggplot(aes(y = estimate, x = iteration, 
              color = chain, linetype = subchain)) +
-  facet_wrap(~parameter, scales = "free") +
+  facet_grid(parameter~model, scales = "free") +
   geom_line() +
-  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean,
+  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean/10,
              linetype = "dashed") +
   
-  labs(title = "Convergence of the sigma parameters",
-       subtitle = "species*dbh with covariance") +
+  labs(title = "Convergence of the sigma parameters") +
   
   theme_bw() +
   theme(plot.title = element_text(hjust = 0.5),
@@ -666,20 +679,45 @@ trace_clean %>%
 # Model intercepts
 trace_clean %>% 
   
-  dplyr::filter(grepl("intercept", parameter)) %>% 
-  dplyr::mutate(parameter = gsub("intercept.", "", parameter),
-                parameter = gsub("_intercept", "", parameter)) %>% 
+  dplyr::filter(grepl("intercept", parameter),
+                !grepl("z_", parameter)) %>% 
   
   ggplot(aes(y = estimate, x = iteration, 
              color = chain, linetype = subchain)) +
-  facet_wrap(~parameter, scales = "free") +
+  facet_grid(parameter~model, scales = "free") +
   geom_line() +
   
-  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean,
+  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean/10,
              linetype = "dashed") +
   
-  labs(title = "Convergence of the intercept parameters",
-       subtitle = "species*dbh with covariance") +
+  labs(title = "Convergence of the intercept parameters") +
+  
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+
+
+trace_clean %>% 
+  
+  dplyr::filter(model != 1,
+                grepl("intercept", parameter),
+                grepl("z_", parameter)) %>% 
+  
+  dplyr::mutate(id = paste(
+    gsub("z_intercept.", "", parameter),
+    "_",
+    model
+  )) %>% 
+  
+  ggplot(aes(y = estimate, x = iteration, 
+             color = chain, linetype = subchain)) +
+  facet_wrap(~id, scales = "free") +
+  geom_line() +
+  
+  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean/10,
+             linetype = "dashed") +
+  
+  labs(title = "Convergence of the intercept parameters") +
   
   theme_bw() +
   theme(plot.title = element_text(hjust = 0.5),
@@ -689,26 +727,76 @@ trace_clean %>%
 # Model dbh
 trace_clean %>% 
   
-  dplyr::filter(grepl("dbh", parameter)) %>% 
-  dplyr::mutate(parameter = gsub("dbh.", "", parameter),
-                parameter = gsub("_dbh", "", parameter)) %>% 
+  dplyr::filter(grepl("dbh", parameter),
+                !grepl("z_", parameter)) %>% 
   
   ggplot(aes(y = estimate, x = iteration, 
              color = chain, linetype = subchain)) +
-  facet_wrap(~parameter, scales = "free") +
+  facet_grid(parameter~model, scales = "free") +
   geom_line() +
   
-  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean,
+  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean/10,
              linetype = "dashed") +
   geom_hline(yintercept = 0) +
   
-  labs(title = "Convergence of the dbh parameters",,
-       subtitle = "species*dbh with covariance") +
+  labs(title = "Convergence of the dbh parameters") +
+  
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+
+
+trace_clean %>% 
+  
+  dplyr::filter(model != 1,
+                grepl("dbh", parameter),
+                grepl("z_", parameter)) %>% 
+  
+  dplyr::mutate(id = paste(
+    gsub("z_dbh.", "", parameter),
+    "_",
+    model
+  )) %>% 
+  
+  ggplot(aes(y = estimate, x = iteration, 
+             color = chain, linetype = subchain)) +
+  facet_wrap(~id, scales = "free") +
+  geom_line() +
+  
+  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean/10,
+             linetype = "dashed") +
+  
+  labs(title = "Convergence of the intercept parameters") +
+  
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+
+
+# Rho parameter
+trace_clean %>% 
+  
+  dplyr::filter(parameter == "rho_raw",
+                model == 3) %>% 
+  dplyr::mutate(rho = 2*plogis(estimate) - 1) %>% 
+  
+  ggplot(aes(y = rho, x = iteration, 
+             color = chain, linetype = subchain)) +
+  facet_grid(chain~subchain, scales = "free") +
+  geom_line() +
+  
+  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean/10,
+             linetype = "dashed") +
+  geom_hline(yintercept = 0) +
+  
+  labs(title = "Convergence of the rho parameter",
+       subtitle = "Model 3: speciesXdbh with covariance") +
   
   theme_bw() +
   theme(plot.title = element_text(hjust = 0.5),
         plot.subtitle = element_text(hjust = 0.5))
 ```
+
 
 ### Effect of DBH for each species
 
@@ -719,9 +807,7 @@ dbh_cm_large <- 60
 # Compute mean LAD distribution
 params_clean <- out_list$output %>% 
   purrr::map(~.x$output) %>% 
-  setNames(out_list$output %>% purrr::map(~.x$i_chain))
-
-params_clean <- params_clean %>% 
+  setNames(out_list$output %>% purrr::map(~paste(.x$id_model, .x$i_chain, sep = "_"))) %>% 
   purrr::map(~.x %>% 
                getSample(start = nrow(.x$chain[[1]]) - n_analysis_clean, 
                          end = NULL, 
@@ -731,17 +817,25 @@ params_clean <- params_clean %>%
                             dplyr::mutate(iteration = row_number()) %>%
                             dplyr::relocate(iteration)) %>%
                dplyr::bind_rows(.id = "subchain")) %>%
-  dplyr::bind_rows(.id = "chain") %>% 
+  dplyr::bind_rows(.id = "id_simu") %>% 
+  tidyr::separate(id_simu, c("model", "chain"), sep = "_") %>% 
   
     # Compute the LAD for each species
-  dplyr::select(chain, subchain, iteration,
+  dplyr::select(model, chain, subchain, iteration,
                 sigma_log, sigma_site_log, sigma_origin_log,
                 sigma_intercept_log, sigma_dbh_log,
+                intercept, dbh,
                 mean_intercept, mean_dbh,
                 contains("z_intercept"), contains("z_dbh"),
                 rho_raw) %>% 
   
-  tidyr::pivot_longer(!c(chain, subchain, iteration,
+  dplyr::mutate(
+    mean_intercept = coalesce(intercept, mean_intercept),
+    mean_dbh = coalesce(dbh, mean_dbh)
+  ) %>% 
+  dplyr::select(-c(intercept, dbh)) %>% 
+  
+  tidyr::pivot_longer(!c(model, chain, subchain, iteration,
                          sigma_log, sigma_site_log, sigma_origin_log,
                          sigma_intercept_log, sigma_dbh_log,
                          mean_intercept, mean_dbh, rho_raw),
@@ -759,17 +853,21 @@ params_clean <- params_clean %>%
     sigma_mod = exp(sigma_log),
     sigma_site = exp(sigma_site_log),
     sigma_origin = exp(sigma_origin_log),
-    sigma_intercept = exp(sigma_intercept_log),
-    sigma_dbh = exp(sigma_dbh_log),
+    sigma_intercept = ifelse(is.na(sigma_intercept_log), 0, exp(sigma_intercept_log)),
+    sigma_dbh = ifelse(is.na(sigma_dbh_log), 0, exp(sigma_dbh_log)),
     
     # Compute the rho parameter (covariance)
     rho_raw = ifelse(is.na(rho_raw), 0, rho_raw),
     rho = 2*plogis(rho_raw) - 1,
     sqrt1mr2 = sqrt(1 - rho^2),
     
+    # Set to 0 if z are NA
+    z_intercept = ifelse(is.na(z_intercept), 0, z_intercept),
+    z_dbh = ifelse(is.na(z_dbh), 0, z_dbh),
+    
     # Compute the species specific intercept and dbh effect
-    intercept_spspe = mean_intercept + exp(sigma_intercept_log) * z_intercept,
-    dbh_spspe = mean_dbh + exp(sigma_dbh_log) * (rho * z_intercept + sqrt1mr2 *z_dbh)
+    intercept_spspe = mean_intercept + sigma_intercept * z_intercept,
+    dbh_spspe = mean_dbh + sigma_dbh * (rho * z_intercept + sqrt1mr2 *z_dbh)
   ) %>% 
   
   # Compute variance (do not forget that we fit a log_normal LAD, thus consider variance term when back transforming)
@@ -780,125 +878,135 @@ params_clean <- params_clean %>%
 
 # Observe covariance parameter (same between species)
 params_clean %>% 
-  dplyr::group_by(chain, subchain) %>% 
+  dplyr::group_by(model, chain, subchain) %>% 
   dplyr::summarise(
     rho_lower = quantile(rho, 0.025),
     rho_median = median(rho),
     rho_upper = quantile(rho, 0.975)
   )
 
+# Get models
+mod_names <- c("mean species", "sp-specific no covar", "sp_specific with covar")
 
 # Plot LAD prediction along dbh for a mean species gradient for each model 
-tidyr::crossing(
-  params_clean,
-  dbh_cm = seq(
-    quantile(out_list$setup[[1]]$dbh_vect, 0.025),
-    quantile(out_list$setup[[1]]$dbh_vect, 0.975),
-    length.out = 100
-  )
-) %>% 
+for (i in 1:nrow(out_list$exp_design)) {
   
-  dplyr::mutate(
-    dbh_std = (dbh_cm - out_list$setup[[1]]$dbh_mean) / out_list$setup[[1]]$dbh_sd
+  tmp_plt <- tidyr::crossing(
+    params_clean %>% 
+      dplyr::filter(model == i),
+    dbh_cm = seq(
+      quantile(out_list$setup[[1]]$dbh_vect, 0.025),
+      quantile(out_list$setup[[1]]$dbh_vect, 0.975),
+      length.out = 100
+    )
   ) %>% 
+    
+    dplyr::mutate(
+      dbh_std = (dbh_cm - out_list$setup[[1]]$dbh_mean) / out_list$setup[[1]]$dbh_sd
+    ) %>% 
+    
+    dplyr::mutate(
+      lad = exp(intercept_spspe + dbh_std * dbh_spspe + 0.5*variance_sum)
+    ) %>% 
+    
+    dplyr::group_by(model, chain, subchain, species, dbh_cm) %>% 
+    dplyr::summarise(
+      lad_median = median(lad),
+      lad_lower = quantile(lad, 0.025),
+      lad_upper = quantile(lad, 0.975)
+    ) %>% 
+    
+    ggplot(aes(y = lad_median, x = dbh_cm, 
+               color = chain, linetype = subchain)) +
+    facet_wrap(~species, scales = "free_y") +
+    
+    geom_line() +
+    geom_ribbon(aes(ymin = lad_lower, ymax = lad_upper,
+                    fill = chain, linetype = subchain),
+                color = NA,
+                alpha = 0.4) +
+    
+    xlab("DBH (in cm)") +
+    ylab("LAD prediction") +
+    labs(title = paste("LAD predictions for model", mod_names[i]),
+         subtitle = "between 2.5% and 97.5% quantiles of all species observed DBH") +
+    
+    theme_bw() +
+    theme(legend.position = "right",
+          plot.title = element_text(hjust = 0.5),
+          plot.subtitle = element_text(hjust = 0.5))
   
-  dplyr::mutate(
-    lad = exp(intercept_spspe + dbh_std * dbh_spspe + 0.5*variance_sum)
-  ) %>% 
-  
-  dplyr::group_by(chain, subchain, species, dbh_cm) %>% 
-  dplyr::summarise(
-    lad_median = median(lad),
-    lad_lower = quantile(lad, 0.025),
-    lad_upper = quantile(lad, 0.975)
-  ) %>% 
-  
-  ggplot(aes(y = lad_median, x = dbh_cm, 
-             color = chain, linetype = subchain)) +
-  facet_wrap(~species, scales = "free_y") +
-  
-  geom_line() +
-  # geom_ribbon(aes(ymin = lad_lower, ymax = lad_upper, 
-  #                 fill = chain, linetype = subchain),
-  #             color = NA,
-  #             alpha = 0.4) +
-  
-  xlab("DBH (in cm)") +
-  ylab("LAD prediction") +
-  labs(title = "LAD models along a DBH gradient",
-       subtitle = "between 2.5% and 97.5% quantiles of all species observed DBH") +
-  
-  theme_bw() +
-  theme(legend.position = "right",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5))
-
+  print(tmp_plt)
+}
 
 # Plot LAD prediction for two dbh
-lad_clean_2sizes <- tidyr::crossing(
-  params_clean,
-  tree_size = c("small", "large")
-) %>% 
+for (i in 1:nrow(out_list$exp_design)) {
   
-  dplyr::mutate(
-    dbh_cm = ifelse(tree_size == "small",
-                    dbh_cm_small,
-                    dbh_cm_large),
+  lad_clean_2sizes <- tidyr::crossing(
+    params_clean %>% 
+      dplyr::filter(model == i),
+    tree_size = c("small", "large")
+  ) %>% 
     
-    dbh_std = (dbh_cm - out_list$setup[[1]]$dbh_mean) / out_list$setup[[1]]$dbh_sd
+    dplyr::mutate(
+      dbh_cm = ifelse(tree_size == "small",
+                      dbh_cm_small,
+                      dbh_cm_large),
+      
+      dbh_std = (dbh_cm - out_list$setup[[1]]$dbh_mean) / out_list$setup[[1]]$dbh_sd
+      
+    ) %>% 
     
-  ) %>% 
+    dplyr::mutate(
+      lad = exp(intercept_spspe + dbh_std * dbh_spspe + 0.5*variance_sum)
+    ) %>% 
+    
+    dplyr::group_by(chain, species, tree_size) %>% 
+    dplyr::summarise(
+      lad_lower = quantile(lad, 0.025),
+      lad_median = median(lad),
+      lad_upper = quantile(lad, 0.975)
+    ) %>% 
+    
+    dplyr::mutate(species = gsub("_", "", species),
+                  order = case_match(species,
+                                     c("Abiesalba", "Larixdecidua",
+                                       "Piceaabies", "Pinussylvestris",
+                                       "Pseudotsugamenziesii") ~ "gymnosperm",
+                                     c("Carpinusbetulus", "Fagussylvatica",
+                                       "Quercussp", "other") ~ "angiosperm"))
   
-  dplyr::mutate(
-    lad = exp(intercept_spspe + dbh_std * dbh_spspe + 0.5*variance_sum)
-  ) %>% 
+  tmp_plt <- lad_clean_2sizes %>%
+    
+    ggplot(aes(y = interaction(tree_size, species),
+               color = species, shape = order)) +
+    facet_wrap(~chain, scales = "free_x") +
+    
+    geom_pointrange(mapping = aes(x = lad_median, 
+                                  xmin = lad_lower, 
+                                  xmax = lad_upper)) +
+    
+    scale_y_discrete(NULL, guide = "axis_nested") +
+    xlab("LAD distribution") +
+    ylab("") +
+    labs(title = paste("LAD predictions for model", mod_names[i]),
+         subtitle = paste0("for a small tree (dbh = ",
+                           dbh_cm_small,
+                           "cm) and a large tree (dbh = ",
+                           dbh_cm_large,
+                           "cm)"),
+         colour = "species") +
+    
+    theme_bw() +
+    theme(legend.position = "top",
+          plot.title = element_text(hjust = 0.5),
+          plot.subtitle = element_text(hjust = 0.5),
+          axis.text.y = element_text(size = 7)) +
+    guides(colour = "none")
   
-  dplyr::group_by(chain, species, tree_size) %>% 
-  dplyr::summarise(
-    lad_lower = quantile(lad, 0.025),
-    lad_median = median(lad),
-    lad_upper = quantile(lad, 0.975)
-  ) %>% 
-
-  dplyr::mutate(species = gsub("_", "", species),
-                order = case_match(species,
-                                   c("Abiesalba", "Larixdecidua",
-                                     "Piceaabies", "Pinussylvestris",
-                                     "Pseudotsugamenziesii") ~ "gymnosperm",
-                                   c("Carpinusbetulus", "Fagussylvatica",
-                                     "Quercussp", "other") ~ "angiosperm"))
-
-
-# Plot LAD for final model for two dbh
-lad_clean_2sizes %>%
   
-  ggplot(aes(y = interaction(species, tree_size),
-             color = species, shape = order)) +
-  facet_wrap(~chain, scales = "free_x") +
-  
-  geom_pointrange(mapping = aes(x = lad_median, 
-                                xmin = lad_lower, 
-                                xmax = lad_upper)) +
-  
-  geom_hline(yintercept = 9.5, linetype = "dashed", colour = "black") +
-  
-  scale_y_discrete(NULL, guide = "axis_nested") +
-  xlab("LAD distribution") +
-  ylab("") +
-  labs(title = "Species-specific LAD prediction for 'dbh*species with covar' model",
-       subtitle = paste0("for a small tree (dbh = ",
-                         dbh_cm_small,
-                         "cm) and a large tree (dbh = ",
-                         dbh_cm_large,
-                         "cm)"),
-       colour = "species") +
-  
-  theme_bw() +
-  theme(legend.position = "top",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5),
-        axis.text.y = element_text(size = 7)) +
-     guides(colour = "none")
+  print(tmp_plt)
+}
 ```
 
 
@@ -1145,6 +1253,24 @@ data_plt_dbhXbatot %>%
 # Output analysis
 
 ```{r}
+tar_load(data_calib)
+
+data_calib <- data_calib %>% 
+  purrr::map(~.x$trees) %>% 
+  dplyr::bind_rows() %>% 
+  
+  dplyr::mutate(
+    order = case_match(species_calib,
+                       c("Abies_alba", "Larix_decidua",
+                         "Picea_abies", "Pinus_sylvestris",
+                         "Pseudotsuga_menziesii") ~ "gymnosperm",
+                       c("Carpinus_betulus", "Fagus_sylvatica",
+                         "Quercus_sp", "other") ~ "angiosperm")
+  )
+```
+
+
+```{r}
 tar_load(data_output_tree)
 tar_load(data_output_stand)
 tar_load(data_output_light)
@@ -1152,6 +1278,13 @@ tar_load(LAD_CONTROL)
 ```
 
 ## Observe initial data
+
+```{r}
+mod_cor <- lm(data = data_output_tree, 
+              formula = batot_m2ha ~ order)
+summary(mod_cor)
+```
+### Stand variables
 
 ```{r}
 ggplot(data_output_tree, aes(y = batot_m2ha, x = order, color = order)) +
@@ -1191,9 +1324,64 @@ ggplot(data_output_tree, aes(y = dbh_cm, x = batot_m2ha, color = species_calib))
   theme_bw() +
   xlab("Stand basal area (in m2/ha)") +
   ylab("Tree DBH (in cm)")
+```
 
-ggplot(data_output_tree, aes(y = volume_m3, x = dbh_cm, color = batot_m2ha)) +
+
+### Crown dimensions
+
+```{r}
+ggplot(data_calib, aes(y = h_m, 
+                       x = dbh_cm, 
+                       color = batot_m2ha)) +
+  facet_wrap(~order) +
   geom_point() +
+  geom_smooth(method = "gam") +
+  theme_bw() +
+  scale_color_viridis_c() +
+  xlab("Tree DBH (in cm)") +
+  ylab("Tree height (in m)")
+
+ggplot(data_calib, aes(y = hbase_m, 
+                       x = dbh_cm, 
+                       color = batot_m2ha)) +
+  facet_wrap(~order) +
+  geom_point() +
+  geom_smooth(method = "gam") +
+  theme_bw() +
+  scale_color_viridis_c() +
+  xlab("Tree DBH (in cm)") +
+  ylab("Crown base height (in m)")
+
+ggplot(data_calib, aes(y = h_m - hbase_m, 
+                       x = dbh_cm, 
+                       color = batot_m2ha)) +
+  facet_wrap(~order) +
+  geom_point() +
+  geom_smooth(method = "gam") +
+  theme_bw() +
+  scale_color_viridis_c() +
+  xlab("Tree DBH (in cm)") +
+  ylab("Crown depth (in m)")
+
+ggplot(data_calib, aes(y = (rn_m + rs_m + re_m + rw_m) / 4, 
+                       x = dbh_cm, 
+                       color = batot_m2ha)) +
+  facet_wrap(~order) +
+  geom_point() +
+  geom_smooth(method = "gam") +
+  theme_bw() +
+  scale_color_viridis_c() +
+  xlab("Tree DBH (in cm)") +
+  ylab("Mean crown radius (in m)")
+
+
+
+ggplot(data_output_tree, aes(y = volume_m3, 
+                             x = dbh_cm, 
+                             color = batot_m2ha)) +
+  facet_wrap(~order) +
+  geom_point() +
+  geom_smooth(method = "gam") +
   theme_bw() +
   scale_color_viridis_c() +
   xlab("Tree DBH (in cm)") +
@@ -1390,20 +1578,3 @@ data_output_light$stand %>%
         plot.title = element_text(hjust = 0.5),
         plot.subtitle = element_text(hjust = 0.5)) 
 ```
-
-
-
-<!-- # Going further with the Bayesian approach -->
-
-<!-- # Limits -->
-
-<!-- **There is still problem of convergence,** we need to explore why. Intercept and slope can compensate for each other (e.g., high intercept with negative slope vs low intercept with positive slope), the model may not be fully identifiable with the current data: Standardize predictors (like dbh and BALh) to reduce correlation with the intercept, consider covariance between slopes and intercept or constrain parameters using more informative priors (e.g. high or low LAD ?) -->
-
-<!-- **We may miss some important environmental factors in this study.** One hypothesis is that LAD could be highly dependent on variables that we do not consider, such as the tree sanitary health or the site water availability. Here, it may not be possible to consider a climatic effect, because the intra-origin variability in climate may not be sufficient (for example, the 24 Cloture sites are located in the same area). The effect of climate may be contained within the origin random effect, that may also account for other environmental constraints and the protocol effect. -->
-
-<!-- **We could imagine** **another index of competition such as dbh/dg**, which represents more a relative index of competition (i.e. a status within the stand), rather than an absolute index such as BALh. Moreover, the effects are linear, but we could imagine transformations to model for example a plateau effect for competition ? -->
-
-
-<!-- # Perspectives -->
-
-<!-- Once we are satisfied with the modelling approach, we will study the ecological mechanisms that could underlie the differences between species. Do species with different shade tolerance have different leaf area densities? Do they react differently to competition? **Ecological assumptions still have to be made.** -->

@@ -1,6 +1,7 @@
 fit_lad_method1 <- function(output_sensors,
                             convergence_threshold,
-                            data_sensors_punobs,
+                            data_stands,
+                            output_punobs,
                             output_plots_fp) 
 {
   
@@ -8,12 +9,18 @@ fit_lad_method1 <- function(output_sensors,
   unlink(output_plots_fp, recursive = T)
   dir.create(output_plots_fp, recursive = T) # create folder
   
+  # Observed pacl for each site
+  data_sensors <- data_stands %>% 
+    purrr::map(~.x$sensors) %>% 
+    dplyr::bind_rows(.id = "site") %>% 
+    dplyr::left_join(output_punobs, by = c("site", "id_sensor"))
+  
   # Compute residuals for each sensor and LAD
   output_residuals <- output_sensors %>% 
-    dplyr::left_join(data_sensors_punobs, 
+    dplyr::left_join(data_sensors, 
                      by = c("site", "id_sensor")) %>% 
     dplyr::mutate(
-      res = PACLobs - pacl
+      res = PACLtotal - pacl
     )
   
   info_sensors <- output_residuals %>% 
@@ -22,14 +29,14 @@ fit_lad_method1 <- function(output_sensors,
       best_lad = lad[which.min(abs(res))]
     ) %>% 
     dplyr::mutate(
-      converged = best_lad<convergence_threshold
+      converged = best_lad < convergence_threshold
     ) %>% 
-    dplyr::left_join(data_sensors_punobs, 
+    dplyr::left_join(data_sensors, 
                      by = c("site", "id_sensor")) %>% 
     dplyr::mutate(
       sensor_label = paste0(id_sensor, 
-                            " - PACL = ", round(PACLobs, 2), 
-                            " - punobs = ", round(punobs_horizontal, 2))
+                            " - PACL = ", round(PACLtotal, 2), 
+                            " - punobs = ", round(punobs, 2))
     )
   
   output_residuals_labeled <- output_residuals %>% 
@@ -105,5 +112,6 @@ fit_lad_method1 <- function(output_sensors,
   close(pb)
   
   # Return the summarized info per sensor
-  info_sensors
+  info_sensors %>% 
+    dplyr::select(site, id_sensor, best_lad, converged, punobs, pacl_obs = PACLtotal)
 }

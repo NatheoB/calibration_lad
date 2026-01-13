@@ -1,33 +1,38 @@
 create_experimental_design <- function() {
   
-  # Species-specific intercept, dbh and compet effect without covariance ----
+  # Phylogeny-specific intercept, dbh and compet effect without covariance ----
   # log(LAD) ~ DBH*BATOT + (1 | site/origin)
   expand.grid(
     
-    filter_sensors = TRUE,
+    filter_sensors = TRUE, # filter sensors based on preliminary analysis (converged = TRUE)
     
-    site_rd_effect = TRUE,
+    site_rd_effect = TRUE, # hierarchical site into origin random effect
     origin_rd_effect = TRUE,
-    batot_in_site_effect = TRUE,
     
-    intercept_per_sp = FALSE,
-    intercept_sp_pooling = FALSE,
+    batot_site_effect = TRUE, # site effect of total basal area
+    dbh_effect = TRUE, # individual effect of diameter
     
-    dbh_effect = TRUE,
-    dbh_interaction_batot = TRUE,
-    dbh_per_sp = FALSE,
-    dbh_sp_pooling = FALSE,
+    group_variable = "phylogeny", # can also be "species" for example
+    intercept_per_group = TRUE,
+    dbh_per_group = TRUE,
     
+    # OPTION 1: group pooling: covariance effect between intercept and dbh slope
+    # does not work with dbhXbatot interaction !!
+    intercept_group_pooling = FALSE,
+    dbh_group_pooling = FALSE,
     consider_covariance = FALSE,
     
-    compet_effect = FALSE
+    # OPTION 2: consider interaction between batot and dbh
+    # does not work with group pooling, because it implies considering batot per group
+    batot_per_group = TRUE,
+    dbh_interaction_batot = TRUE
     
   ) %>% 
 
     dplyr::mutate(
       id_model = row_number(),
-      n_iterations = 100000,
-      n_analysis = 5000
+      n_iterations = 10000,
+      n_analysis = 1000
     ) %>%
     dplyr::relocate(id_model, n_iterations, n_analysis)
   

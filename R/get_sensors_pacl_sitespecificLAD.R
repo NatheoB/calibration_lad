@@ -1,11 +1,10 @@
 get_sensors_pacl_sitespecificLAD <- function(lad_values,
-                                             data_calib, 
-                                             data_rad, 
-                                             data_plots)
+                                             data_stands, 
+                                             data_rad)
 {
 
   # For each site and each LAD value
-  site_names <- data_plots$name
+  site_names <- names(data_stands)
   
   pb <- txtProgressBar(min = 0, max = length(site_names)*length(lad_values), 
                        style = 3, width = 50, char = "=")
@@ -17,44 +16,27 @@ get_sensors_pacl_sitespecificLAD <- function(lad_values,
     out_pacl_sites_lads <- setNames(vector("list", length(lad_values)), lad_values) 
     for (lad in lad_values) {
       
-      # Set the site specific tree crown LAD 
-      tmp_trees <- data_calib[[site]]$trees %>% 
-        dplyr::mutate(crown_lad = lad)
+      # Copy the stand
+      tmp_stand <- data_stands[[site]]
       
-      # Get the plot info
-      tmp_plot <- data_plots %>% 
-        dplyr::filter(name == site)
+      # Set the site specific tree crown LAD 
+      tmp_stand$trees$crown_lad <- lad
       
       # Run SamsaraLight
-      tmp_out_samsalight <- 
-        sl_run(tmp_trees, 
-               data_rad[[site]],
-               sensors = data_calib[[site]]$sensors, 
-               sensors_only = TRUE,
-               latitude = tmp_plot$latitude, 
-               slope = tmp_plot$slope, 
-               aspect = tmp_plot$aspect, 
-               north_to_x_cw = tmp_plot$northToX,
-               start_day = 121, 
-               end_day = 273,
-               cell_size = data_calib[[site]]$info$cell_size, 
-               n_cells_x = data_calib[[site]]$info$n_cells_x, 
-               n_cells_y = data_calib[[site]]$info$n_cells_y,
-               turbid_medium = TRUE,
-               trunk_interception = TRUE,
-               soc = TRUE,
-               height_anglemin = 15,
-               direct_startoffset = 0,
-               direct_anglestep = 5,
-               diffuse_anglestep = 15,
-               detailed_output = TRUE)
+      tmp_out_sl <- 
+        SamsaRaLight::run_sl(tmp_stand, 
+                             data_rad[[site]],
+                             sensors_only = TRUE,
+                             use_torus = TRUE,
+                             turbid_medium = TRUE,
+                             detailed_output = FALSE,
+                             parallel_mode = TRUE,
+                             n_threads = NULL,
+                             verbose = FALSE)
       
       # Sl sensors output for the plot
-      out_pacl_sites_lads[[as.character(lad)]] <- tmp_out_samsalight$output$sensors %>% 
-        dplyr::select(id_sensor,
-                      pacl = pacl_horizontal,
-                      pacl_direct = pacl_horizontal_direct,
-                      pacl_diffuse = pacl_horizontal_diffuse)
+      out_pacl_sites_lads[[as.character(lad)]] <- tmp_out_sl$output$light$sensors %>% 
+        dplyr::select(id_sensor, pacl)
       
       # Update progress bar
       i_pb <- i_pb + 1

@@ -9,7 +9,9 @@ get_summary_pointwise_models <- function(models_setup,
     samples <- samples[(nrow(samples)-mod_design$n_analysis+1):nrow(samples),]
     
     # Get the number of observation (i.e. total number of sesnors over all the sites)
-    n_sensors <- nrow(data_sensors %>% dplyr::bind_rows())
+    n_sensors <- nrow(data_stands %>% 
+                        purrr::map(~.x$sensors) %>% 
+                        dplyr::bind_rows())
 
     # Get the matrix of PACL residuals and pointwise log-likelihood for all samples of parameters
     out_residuals <- matrix(NA, nrow = nrow(samples), ncol = n_sensors)
@@ -41,31 +43,52 @@ get_summary_pointwise_models <- function(models_setup,
   i_chain <- model_output$i_chain
   
   
+  
   # Initialize the logs ----
   
-  ## Create the folder
-  dir.create(logs_folder, showWarnings = FALSE)
+  # Create the folder
+  dir.create(logs_folder, showWarnings = FALSE, recursive = TRUE)
   
   # Unique log file per worker that close at the end of the function
-  log_file <- sprintf("logs/pointwise-mod%s-chain%i-worker%s-%s.log", 
+  log_file <- sprintf(file.path(logs_folder,"pointwise-mod%s-chain%i-worker%s-%s.log"), 
                       id_model, i_chain, 
                       Sys.getpid(), Sys.Date())
   
-  # Capture output (prints)
-  con <- file(log_file, open = "wt")
-  sink(con)
+  
+  # Redirect ALL stdout + C output
+  log_con <- file(log_file, open = "at")
+  
+  sink(log_con, type = "output", append = TRUE)
+  sink(log_con, type = "message", append = TRUE)
+  
+  # Close connections at the end of the function
+  on.exit({
+    sink(type = "message")
+    sink(type = "output")
+    close(log_con)
+  }, add = TRUE)
+  
+  
+  ### Manual logger
+  # R does not immediately write to disk.
+  # It puts the text in a buffer in memory
+  # Thus, flush() pushes everything in the buffer to disk
+  log_write <- function(...) {
+    cat(..., "\n")
+    flush.console()
+  }
   
   
   # Compute the residuals of all the last samples of each model ----
   ## Storing errors, warnings and messages
-  cat("----- Computing residuals and pointwise log-likelihood of model", id_model, "/ chain", i_chain, "-----\n\n\n")
+  log_write("----- Computing residuals and pointwise log-likelihood of model", id_model, "/ chain", i_chain, "-----\n\n\n")
   
   result <- tryCatch(
     {
       # Use withCallingHandlers to capture messages/warnings
       withCallingHandlers({
         
-        cat("Starting computing\n\n")
+        log_write("Starting computing\n\n")
       
         ## Set the model environment
         environment(get_summary_pointwise_model) <- models_setup[[id_model]]
@@ -77,28 +100,27 @@ get_summary_pointwise_models <- function(models_setup,
         out$id_model <- id_model
         out$i_chain <- i_chain
         
-        cat("\n\nFinished computing\n\n")
+        log_write("\n\nFinished computing\n\n")
         
         out
       },
       message = function(m) {
-        cat("\n[MESSAGE] ", conditionMessage(m), "\n", file = con)
+        log_write("[MESSAGE]", conditionMessage(m))
         invokeRestart("muffleMessage")
       },
       warning = function(w) {
-        cat("\n[WARNING] ", conditionMessage(w), "\n", file = con)
+        log_write("[WARNING]", conditionMessage(w))
         invokeRestart("muffleWarning")
       })
     },
     error = function(e) {
-      cat("\n[ERROR] ", conditionMessage(e), "\n", file = con)
+      log_write("[ERROR]", conditionMessage(e))
       # Return a safe placeholder (e.g., NA or empty list)
       list(failed = TRUE, params = params, result = NA)
     }
   )
   
-  cat("\n\n----- Finished model", id_model, "/ chain", i_chain, "-----")
-  close(con)
+  log_write("\n\n----- Finished model", id_model, "/ chain", i_chain, "-----")
   
   
   # Return the list of models' summary matrices ----
