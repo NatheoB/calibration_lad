@@ -822,22 +822,25 @@ initialise_model <- function(mod_design,
   
   #### Model residuals ----
   par_normal <- c(par_normal, "sigma_log")
-  prior_normal_mean <- c(prior_normal_mean, log(0.3))
-  prior_normal_sd <- c(prior_normal_sd, 0.5)
+  prior_normal_mean <- c(prior_normal_mean, log(0.05))
+  prior_normal_sd <- c(prior_normal_sd, 0.1)
+  
   
   #### Origin random effect ----
   if (mod_design$origin_rd_effect) {
     par_normal <- c(par_normal, "sigma_origin_log")
     prior_normal_mean <- c(prior_normal_mean, log(0.3))
-    prior_normal_sd <- c(prior_normal_sd, 0.5)
+    prior_normal_sd <- c(prior_normal_sd, 0.3)
   }
+  
   
   #### Site random effect ----
   if (mod_design$site_rd_effect) {
     par_normal <- c(par_normal, "sigma_site_log")
     prior_normal_mean <- c(prior_normal_mean, log(0.3))
-    prior_normal_sd <- c(prior_normal_sd, 0.5)
+    prior_normal_sd <- c(prior_normal_sd, 0.3)
   }
+  
   
   #### Intercept species partial pooling ----
   if (mod_design$intercept_group_pooling) {

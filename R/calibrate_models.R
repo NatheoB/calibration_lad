@@ -1,19 +1,25 @@
 calibrate_models <- function(models_setup,
-                             sampling_algo,
                              id_model,
-                             i_chain,
+                             i_rep,
                              logs_folder) {
   
   # Function to calibrate a model given the environment is set up ----
-  calibrate_model <- function(sampling_algo) {
+  calibrate_model <- function() {
+    
     
     # Define settings ----
-    settings <- list(iterations = mod_design$n_iterations, 
-                     nrChains = 3, nCR = 3, burnin = 0, 
-                     gamma = NULL, eps = 1e-6, e = 0.05, 
-                     pCRupdate = TRUE, updateInterval = 50, thin = 1, 
-                     adaptation = 0.2, Z = NULL, ZupdateFrequency = 10, 
-                     pSnooker = 0.1, DEpairs = 3, startValue = NULL, 
+    settings <- list(iterations = mod_design$n_iterations,
+                     burnin = mod_design$n_burning,
+                     thin = 1,
+                     nCR = mod_design$n_subchains,
+                     nrChains = mod_design$n_chains, 
+                     gamma = NULL, 
+                     eps = 1e-6, e = 0.05, 
+                     pCRupdate = TRUE, updateInterval = 50, 
+                     adaptation = 0.2, 
+                     Z = NULL, ZupdateFrequency = 10, 
+                     pSnooker = 0.1, DEpairs = 3, 
+                     startValue = NULL, 
                      consoleUpdates = 1, message = TRUE)
     
     
@@ -21,7 +27,7 @@ calibrate_models <- function(models_setup,
     # Run Bayesian calibration ----
     t_start <- Sys.time()
     out <- BayesianTools::runMCMC(bayesianSetup = bayesianSetup, 
-                                  sampler = sampling_algo, 
+                                  sampler = "DREAMzs", 
                                   settings = settings)
     t_end <- Sys.time()
     
@@ -48,7 +54,7 @@ calibrate_models <- function(models_setup,
   
   # Unique log file per worker that close at the end of the function
   log_file <- sprintf(file.path(logs_folder,"calib-mod%s-chain%i-worker%s-%s.log"), 
-                      id_model, i_chain, 
+                      id_model, i_rep, 
                       Sys.getpid(), Sys.Date())
   
   
@@ -78,7 +84,7 @@ calibrate_models <- function(models_setup,
   
   # Calibrate the model ----
   ## Run the model by storing errors, warnings and messages
-  log_write("----- Calibrating model", id_model, "/ chain", i_chain, "-----\n")
+  log_write("----- Calibrating model", id_model, "/ rep", i_rep, "-----\n")
   
   result <- tryCatch(
     {
@@ -91,11 +97,11 @@ calibrate_models <- function(models_setup,
         environment(calibrate_model) <- models_setup[[id_model]]
         
         ### capture printed output
-        out <- calibrate_model(sampling_algo)
+        out <- calibrate_model()
         
         ## Add model IDs to output
         out$id_model <- id_model
-        out$i_chain <- i_chain
+        out$i_rep <- i_rep
         
         log_write("\nFinished MCMC\n")
         
@@ -117,7 +123,7 @@ calibrate_models <- function(models_setup,
     }
   )
   
-  log_write("\n----- Finished model", id_model, "/ chain", i_chain, "-----\n")
+  log_write("\n----- Finished model", id_model, "/ chain", i_rep, "-----\n")
   
   
   # Return the list of models' output ----

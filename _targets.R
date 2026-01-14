@@ -31,9 +31,6 @@ list(
   # PARAMETERS ----
   tar_target(SEED, 5030),
   
-  tar_target(N_CHAINS, 1),
-  tar_target(chains, 1:N_CHAINS),
-  
   tar_target(LAD_CONTROL, 0.5),
   
   
@@ -109,12 +106,14 @@ list(
 
 
   ### Run the MCMC ----
+  tar_target(N_REPS, 3),
+  tar_target(reps, 1:N_REPS),
+  
   tar_target(models_output_list, calibrate_models(models_setup,
-                                                  sampling_algo = "DREAMzs",
                                                   id_model = id_models,
-                                                  i_chain = chains,
+                                                  i_rep = reps,
                                                   logs_folder = "logs/calib"),
-             pattern = cross(id_models, chains),
+             pattern = cross(id_models, reps),
              iteration = "list"),
 
 
@@ -122,42 +121,41 @@ list(
   # COMPARE AND EVALUATE THE MODELS ----
 
   ## Compute pointwise likelihoods ----
-  tar_target(models_summary_pointwise_list, get_summary_pointwise_models(models_setup,
-                                                                         models_output_list,
-                                                                         logs_folder = "logs/pointwise"),
-             pattern = map(models_output_list),
-             iteration = "list"),
+  # tar_target(models_summary_pointwise_list, get_summary_pointwise_models(models_setup,
+  #                                                                        models_output_list,
+  #                                                                        logs_folder = "logs/pointwise"),
+  #            pattern = map(models_output_list),
+  #            iteration = "list"),
 
 
 
   ## Compare models with LOO-CV and WAIC ----
-  tar_target(models_comparison, compare_models(models_summary_pointwise_list)),
+  # tar_target(models_comparison, compare_models(models_summary_pointwise_list)),
 
 
   ## Evaluate models with RMSE ----
-  tar_target(models_evaluation, evaluate_models(models_summary_pointwise_list)),
+  # tar_target(models_evaluation, evaluate_models(models_summary_pointwise_list)),
 
 
 
 
 
   # SAVE OUTPUTS ----
-  tar_target(models_output_fp, save_models(exp_design,
-                                           models_setup,
-                                           models_output_list,
-                                           models_summary_pointwise_list,
-                                           models_comparison,
-                                           models_evaluation,
-                                           "output/calib/",
-                                           "out_20260113_dbhXbatot_phylogeny.Rdata")),
+  # tar_target(models_output_fp, save_models(exp_design,
+  #                                          models_setup,
+  #                                          models_output_list,
+  #                                          models_summary_pointwise_list,
+  #                                          models_comparison,
+  #                                          models_evaluation,
+  #                                          "output/calib/",
+  #                                          "out_20260113_dbhXbatot_phylogeny.Rdata")),
 
 
   # COMPUTE OUTPUT VARIABLES ----
 
-  ## Create parameters table ----
-  # tar_target(output_params, get_output_params(models_output_list,
-  #                                             n_analysis = 50,
-  #                                             thinning = 1)),
+  # Create parameters table ----
+  tar_target(output_params, get_output_params(models_output_list,
+                                              n_analysis = 5000)),
 
 
   # ## Compute tree-level variables ---- 

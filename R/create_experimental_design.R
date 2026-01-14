@@ -1,6 +1,6 @@
 create_experimental_design <- function() {
   
-  # Phylogeny-specific intercept, dbh and compet effect without covariance ----
+  # Angiosperm and gymnosperm diameter/competition interactive effect----
   # log(LAD) ~ DBH*BATOT + (1 | site/origin)
   expand.grid(
     
@@ -31,9 +31,11 @@ create_experimental_design <- function() {
 
     dplyr::mutate(
       id_model = row_number(),
-      n_iterations = 10000,
-      n_analysis = 1000
+      n_iterations = 20000,
+      n_burning = 0,
+      n_subchains = 3,
+      n_chains = 3
     ) %>%
-    dplyr::relocate(id_model, n_iterations, n_analysis)
+    dplyr::relocate(id_model, n_iterations, n_burning, n_subchains, n_chains)
   
 }
