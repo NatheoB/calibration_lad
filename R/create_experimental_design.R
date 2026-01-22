@@ -31,11 +31,11 @@ create_experimental_design <- function() {
 
     dplyr::mutate(
       id_model = row_number(),
-      n_iterations = 20000,
-      n_burning = 0,
-      n_subchains = 3,
-      n_chains = 3
+      n_chains = 5,
+      n_iterations = 50000,
+      n_burning = 20000,
+      nCR = 3
     ) %>%
-    dplyr::relocate(id_model, n_iterations, n_burning, n_subchains, n_chains)
+    dplyr::relocate(id_model, n_chains, n_iterations, n_burning, nCR)
   
 }

@@ -1,7 +1,10 @@
-compute_output_tree <- function(data_calib, 
+compute_output_tree <- function(data_stands, 
                                 models_setup,
                                 output_params,
                                 lad_m2m3_control) {
+  
+  # Site names
+  site_names <- names(data_stands)
   
   # Parameters name of all models
   par_names <- unique(unlist(
@@ -13,7 +16,7 @@ compute_output_tree <- function(data_calib,
   
   
   # Compute tree volumes 
-  data_volume <- data_calib %>%
+  data_volume <- data_stands %>%
     purrr::map(~.x$trees %>% dplyr::filter(!added_to_fill)) %>% 
     dplyr::bind_rows(.id = "site_name") %>% 
     dplyr::mutate(
@@ -36,94 +39,103 @@ compute_output_tree <- function(data_calib,
       # Volume of the assymetric crown
       volume_m3 = v_upper + v_lower
     ) %>% 
-    dplyr::select(site_name, id_tree, species_calib, batot_m2ha, dbh_cm, volume_m3)
+    dplyr::select(site_name, id_tree, phylogeny, species, batot_m2ha, dbh_cm, volume_m3)
   
   
   # For each model
   output_params %>% 
     purrr::map2(names(output_params), function(out_model, id_model) {
       
-      # Add parameters of other models and set it to 0
-      out_model <- tibble::add_column(out_model, !!!pars[setdiff(names(pars), names(out_model))])
+      out_sites <- setNames(vector("list", length(site_names)), site_names)
       
-      # Compute tree leaf area density and tree leaf area
-      tidyr::crossing(
-        data_volume, 
-        out_model
-      ) %>% 
+      for (site in site_names) {
+
+        message("Creating output trees for model ", id_model, " in ", site, "...")
         
-        dplyr::mutate(
-          
-          # Exponentiate sigmas
-          sigma_mod = exp(sigma_log),
-          sigma_site = exp(sigma_site_log),
-          sigma_origin = exp(sigma_origin_log),
-          
-          # Compute variance (do not forget that we fit a log_normal LAD, thus consider variance term when back transforming)
-          variance_sum = sigma_mod^2 + sigma_site^2 + sigma_origin^2,
-          
-          # Restandardize predictors
-          dbh_std = (dbh_cm - models_setup[[id_model]]$dbh_mean) / models_setup[[id_model]]$dbh_sd,
-          batot_std = (batot_m2ha - models_setup[[id_model]]$batot_mean) / models_setup[[id_model]]$batot_sd,
-          
-        ) %>% 
         
-        dplyr::mutate(
-          lad_m2m3_model = exp(intercept + 
-                           dbh_std * dbh + 
-                           batot_std * batot +
-                           dbh_std * batot_std * dbhXbatot + 
-                           0.5*variance_sum),
-          
-          la_m2_model = volume_m3 * lad_m2m3_model,
-          la_m2_control = volume_m3 * lad_m2m3_control,
-          
-          diff_lad_m2m3 = lad_m2m3_control - lad_m2m3_model,
-          diff_la_m2 = la_m2_control - la_m2_model
-        )  %>% 
+        # Add parameters of other models and set it to 0
+        out_model <- tibble::add_column(out_model, !!!pars[setdiff(names(pars), names(out_model))])
         
-        dplyr::group_by(chain, site_name, id_tree, species_calib, 
-                        batot_m2ha, dbh_cm, volume_m3) %>% 
-        dplyr::summarise(
+        # Compute tree leaf area density and tree leaf area
+        out_sites[[site]] <- tidyr::crossing(
+            data_volume %>% dplyr::filter(site_name == site), 
+            out_model
+          ) %>% 
           
-          # LAD summaries
-          lad_model_lower = quantile(lad_m2m3_model, 0.025),
-          lad_model_median = median(lad_m2m3_model),
-          lad_model_upper = quantile(lad_m2m3_model, 0.975),
+          dplyr::mutate(
+            
+            # Exponentiate sigmas
+            sigma_mod = exp(sigma_log),
+            sigma_site = exp(sigma_site_log),
+            sigma_origin = exp(sigma_origin_log),
+            
+            # Compute variance (do not forget that we fit a log_normal LAD, thus consider variance term when back transforming)
+            variance_sum = sigma_mod^2 + sigma_site^2 + sigma_origin^2,
+            
+            # Restandardize predictors
+            dbh_std = (dbh_cm - models_setup[[id_model]]$dbh_mean) / models_setup[[id_model]]$dbh_sd,
+            batot_std = (batot_m2ha - models_setup[[id_model]]$batot_mean) / models_setup[[id_model]]$batot_sd,
+            
+          ) %>% 
+           
+          tidyr::pivot_longer(contains(c("intercept.", "dbh.", "batot.", "dbhxbatot.")),
+                              names_pattern = "(.*)\\.(.*)",
+                              names_to = c(".value", "phylogeny_params")) %>% 
           
-          lad_control_lower = quantile(lad_m2m3_control, 0.025),
-          lad_control_median = median(lad_m2m3_control),
-          lad_control_upper = quantile(lad_m2m3_control, 0.975),
+          dplyr::filter(phylogeny_params != phylogeny) %>% 
           
-          # Leaf area summaries
-          la_model_lower = quantile(la_m2_model, 0.025),
-          la_model_median = median(la_m2_model),
-          la_model_upper = quantile(la_m2_model, 0.975),
+          dplyr::mutate(
+            lad_m2m3_model = exp(intercept + 
+                                   dbh_std * dbh + 
+                                   batot_std * batot +
+                                   dbh_std * batot_std * dbhXbatot + 
+                                   0.5*variance_sum),
+            
+            la_m2_model = volume_m3 * lad_m2m3_model,
+            la_m2_control = volume_m3 * lad_m2m3_control,
+            
+            diff_lad_m2m3 = lad_m2m3_control - lad_m2m3_model,
+            diff_la_m2 = la_m2_control - la_m2_model
+          )  %>% 
           
-          la_control_lower = quantile(la_m2_control, 0.025),
-          la_control_median = median(la_m2_control),
-          la_control_upper = quantile(la_m2_control, 0.975),
-          
-          # Diff between LAD/LA control and predicted
-          diff_lad_lower = quantile(diff_lad_m2m3, 0.025),
-          diff_lad_median = median(diff_lad_m2m3),
-          diff_lad_upper = quantile(diff_lad_m2m3, 0.975),
-          
-          diff_la_lower = quantile(diff_la_m2, 0.025),
-          diff_la_median = median(diff_la_m2),
-          diff_la_upper = quantile(diff_la_m2, 0.975)
-          
-        ) %>% 
-        
-        dplyr::mutate(
-          order = case_match(species_calib,
-                             c("Abies_alba", "Larix_decidua",
-                               "Picea_abies", "Pinus_sylvestris",
-                               "Pseudotsuga_menziesii") ~ "gymnosperm",
-                             c("Carpinus_betulus", "Fagus_sylvatica",
-                               "Quercus_sp", "other") ~ "angiosperm")
-        ) %>% 
-        dplyr::ungroup()
+          dplyr::group_by(site_name, id_tree, species, phylogeny, 
+                          batot_m2ha, dbh_cm, volume_m3) %>% 
+          dplyr::summarise(
+            
+            # LAD summaries
+            lad_model_lower = quantile(lad_m2m3_model, 0.025),
+            lad_model_median = median(lad_m2m3_model),
+            lad_model_upper = quantile(lad_m2m3_model, 0.975),
+            
+            lad_control_lower = quantile(lad_m2m3_control, 0.025),
+            lad_control_median = median(lad_m2m3_control),
+            lad_control_upper = quantile(lad_m2m3_control, 0.975),
+            
+            # Leaf area summaries
+            la_model_lower = quantile(la_m2_model, 0.025),
+            la_model_median = median(la_m2_model),
+            la_model_upper = quantile(la_m2_model, 0.975),
+            
+            la_control_lower = quantile(la_m2_control, 0.025),
+            la_control_median = median(la_m2_control),
+            la_control_upper = quantile(la_m2_control, 0.975),
+            
+            # Diff between LAD/LA control and predicted
+            diff_lad_lower = quantile(diff_lad_m2m3, 0.025),
+            diff_lad_median = median(diff_lad_m2m3),
+            diff_lad_upper = quantile(diff_lad_m2m3, 0.975),
+            
+            diff_la_lower = quantile(diff_la_m2, 0.025),
+            diff_la_median = median(diff_la_m2),
+            diff_la_upper = quantile(diff_la_m2, 0.975)
+            
+          ) %>% 
+          dplyr::ungroup()
+      
+      }
+      
+      out_sites %>% dplyr:: bind_rows()
+      
     }) %>% 
     
     # Bind chains

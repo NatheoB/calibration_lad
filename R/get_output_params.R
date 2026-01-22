@@ -15,8 +15,9 @@ get_output_params <- function(models_output_list,
                                  numSamples = n_analysis) %>% 
         as.data.frame() %>% 
         dplyr::mutate(rep = outs$i_rep, 
-                      id_params = row_number()) %>% 
-        dplyr::relocate(rep, id_params)
+                      id_params = row_number(),
+                      id_set = paste(rep, id_params, sep = "_")) %>% 
+        dplyr::relocate(id_set, rep, id_params)
     }))
   
 }

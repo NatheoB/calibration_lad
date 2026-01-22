@@ -17,6 +17,7 @@ knitr::opts_chunk$set(
 
 ```{r}
 library(targets)
+
 library(dplyr)
 library(tidyr)
 
@@ -26,9 +27,11 @@ library(ggforce)
 library(legendry)
 library(grid)
 library(gridExtra)
+library(ggnewscale)
 
 library(BayesianTools)
 library(coda)
+library(nlme)
 ```
 
 # Motivation of the study
@@ -37,7 +40,9 @@ This study aims to calibrate Leaf Area Density (LAD), which is defined as the ar
 
 Although the leaf area density can be directly estimated from a sample of trees (Stadt & Lieffers, 2000), this method is laborious and difficult to replicate for every tree in a stand. Therefore, indirect methods can be employed, such as model inversion using a hemispherical photograph (Courbaud et al., 2003) or the more recent LiDAR methodology (Wei et al., 2020). However, there is a significant lack of research on LAD in the scientific literature, as there are no large-scale databases containing values for a wide range of European species. Furthermore, the few reported species-specific values vary considerably between studies (Ligot et al., 2014).
 
-The aim of this study is to estimate leaf area density (LAD) for nine different species/groups: Fagus sylvatica, Picea abies, Quercus sp., Carpinus betulus, Pseudotsuga menziesii, Pinus sylvestris, Abies alba, Larix decidua and 'other species'. Additionally, Nock et al. (2008) demonstrated intraspecific variation in LAD, with intracrown leaf area decreasing by up to 40% with increasing tree age. This led us to consider the effect of diameter as well. Finally, as crown dimensions are very sensitive to local competition (Touzot et al., 2025), we hypothesise that LAD may also vary in response to competition.
+The aim of this study is to estimate leaf area density (LAD) for angiosperms and gymnosperms, considering eight main species: Fagus sylvatica, Picea abies, Quercus sp., Carpinus betulus, Pseudotsuga menziesii, Pinus sylvestris, Abies alba, Larix decidua with 'other species' (especially angiosperms). Additionally, Nock et al. (2008) demonstrated intraspecific variation in LAD, with intracrown leaf area decreasing by up to 40% with increasing tree age. This led us to consider the effect of diameter as well. Finally, as crown dimensions are very sensitive to local competition (Touzot et al., 2025), we hypothesise that LAD may also vary in response to competition.
+
+
 
 # Methodology
 
@@ -46,195 +51,6 @@ In this study, we used a model inversion methodology, using the ray-tracing mode
 The aim of the calibration is to find a tree-level LAD model that minimize the error between $PACL_{obs}$ and $PACL_{est}$. To do so, we defined the LAD for a tree $i$, of species $s$ in a plot $p$ as $LAD_{i,s,p} = a_{0,s} + a_{0,p} + a_{1,s}.DBH_i + a_{2,s}.BAH_i + \epsilon$, where $a_{0,s}$ is a species-specific intercept, $a_{0,p}$ is a random hierarchical site effect, nested within an origin effect (4 origins of the plots within UCLouvain, INRAe, Cloture and IRRES), $DBH_i$ is the diameter at breast height of tree $i$ , with the associated estimated species-specific coefficient $a_{1,s}$, $BAH_i$ the competition index of the tree $i$ (*i.e.* the sum of basal area of trees higher than the tree $i$), with the associated estimated species-specific coefficient $a_{2,s}$, and $\epsilon$ the normal error term. We used a Bayesian approach to estimate the posterior distribution of parameters that minimize the log-likelihood between observed and simulated PACL. As computation of $PACL_{est}$ needs an external call of SamsaraLight model, we used the R package 'BayesianTools' to run a MCMC sampling of parameters with the "DREAMzs" sampling algorithm.
 
 For this study, we used the SamsaraLight model with the R package SamsaraLight (Beauchamp et al., work in progress, intended for publication in the Journal of Open Source Software). The SamsaraLight model was initially developed in Java and included in the Capsis simulation platform (SamsaraLightLoader by Gauthier Ligot). It could be called from R software via the "RCapsis" R package (Fortin et al., 2021). To speed up calculation times and make SamsaraLight easier to use in an R environment, we created the "SamsaraLight" R package. The source code is written in C++ to enable fast calculations and communication with the R environment is handled by the Rcpp package (Eddelbuettel & Balamuta, 2018). The "SamsaRaLight" R package reduces calculation time compared to the previous method (the RCapsis R package calling the Java model SamsaRaLightLoader) as it does not require the creation of a Java server nor Java objects. It also facilitates the use of SamsaraLight within R, as it does not require the creation of an inventory file, instead using R objects and functions directly. The package is functional and stored in a GitHub repository, but it is still subject to private restrictions as discussions regarding co-authorship and the intellectual property rights of the source code need to be concluded.
-
-# Calibration plots
-
-The 45 calibration plots comes from 4 different sources we wiil call IRRES (9 plots, Gauthier Ligot), CLOTURE (23 plots, Gauthier Ligot), INRAe (10 plots, Philippe Balandier) and UCLouvain (3 plots, Mathieu Jonard).
-
-```{r}
-plot_stand <- function(init_db, site, cell_size) {
-  
-  # Get trees inventory
-  tmp_data_trees <- init_db$trees[[site]] %>% 
-    dplyr::left_join(init_db$species[[site]], 
-                     by = c("SpCode" = "SpCode_SamsaraLL")) %>% 
-    dplyr::mutate(crown_type = "8E") %>% 
-    dplyr::select(id_tree = Id, 
-                  species_code = SpCode,
-                  species_calib = sp_calib,
-                  x = X, y = Y, dbh_cm = Dbh,
-                  crown_type, h_m = H, hbase_m = CBH, hmax_m = CMRH,
-                  rn_m = RN, rs_m = RS, re_m = RE, rw_m = RW,
-                  crown_openess = CrownOpenness, crown_lad = LAD)
-  
-  
-  # If the plot extent dataframe is empty, set it to the default one
-  tmp_plot_extent <- init_db$plot_extents[[site]]
-  
-  if (!is.null(tmp_plot_extent)) {
-    tmp_plot_extent <- tmp_plot_extent %>% 
-      dplyr::select(x = X, y = Y)
-  }
-  
-  use_rect_zone <- ifelse(is.null(tmp_plot_extent), TRUE, FALSE)
-  
-  
-  # Create a square plot with the inventory in the center
-  tmp_stand <- SamsaRaLight::create_rect_stand(tmp_data_trees, 
-                                               cell_size, 
-                                               tmp_plot_extent,
-                                               use_rect_zone,
-                                               fill_around = FALSE)
-  
-  
-  # Add sensors and shift coordinates inside the rect stand
-  tmp_stand$sensors <- init_db$sensors[[site]] %>% 
-    dplyr::select(id_sensor = id, x, y, h_m = z) %>% 
-    dplyr::mutate(
-      x = x + tmp_stand$info$shift_x,
-      y = y + tmp_stand$info$shift_y
-    )
-  
-  # Add species information to the tree dataset
-  data_plot <- init_db$plots %>% dplyr::filter(name == site)
-  data_species <- init_db$species[[site]]
-  
-  data_trees <- tmp_stand$trees %>% 
-    dplyr::left_join(data_species,
-                     by = c("species_code" = "SpCode_SamsaraLL")) %>% 
-    dplyr::mutate(Essence_Latin = factor(Essence_Latin, levels = data_species$Essence_Latin))
-  
-  
-  ## Create cell dataframe
-  cells_xcenter <- seq(tmp_stand$info$cell_size / 2, 
-                       tmp_stand$info$cell_size * tmp_stand$info$n_cells_x - tmp_stand$info$cell_size / 2,
-                       by = tmp_stand$info$cell_size)
-  
-  cells_ycenter <- seq(tmp_stand$info$cell_size / 2, 
-                       tmp_stand$info$cell_size * tmp_stand$info$n_cells_y - tmp_stand$info$cell_size / 2,
-                       by = tmp_stand$info$cell_size)
-  
-  data_cells <- expand.grid(
-    x_center = cells_xcenter,
-    y_center = cells_ycenter
-  )
-  
-  
-  # Create the plot
-  stand_plot <- ggplot() +
-    coord_equal() +
-    
-    # CELLS 
-    geom_tile(data = data_cells, 
-              mapping = aes(x = x_center, y = y_center), 
-              fill = "white", color = "darkgray")
-  
-  
-  # CORE POLYGON
-  if (!is.null(tmp_stand$inv_zone_df)) {  
-    stand_plot <- stand_plot +
-      geom_polygon(data = tmp_stand$inv_zone_df,
-                   mapping = aes(x = x, y = y),
-                   fill = "yellow", color = "black", alpha = 0.5)
-  }
-  
-  
-  # TREES
-  stand_plot <- stand_plot +
-    geom_ellipse(data = data_trees, 
-                 mapping = aes(x0 = x, y0 = y, 
-                               a = (re_m + rw_m) / 2,
-                               b = (rn_m + rs_m) / 2,
-                               angle = 0,
-                               fill = Essence_Latin)) +
-    scale_fill_manual(values = data_species$Couleur) +
-    labs(fill = "Species") +
-    
-    # SENSORS
-    geom_rect(data = tmp_stand$sensors,
-              mapping = aes(xmin = x - 0.5,
-                            ymin = y - 0.5,
-                            xmax = x + 0.5,
-                            ymax = y + 0.5),
-              color = "red", fill = "black") +
-    
-    # GRAPHIC
-    scale_x_continuous(breaks = seq(0, tmp_stand$info$n_cells_x * tmp_stand$info$cell_size,
-                                    by = tmp_stand$info$cell_size),
-                       labels = round(seq(0, tmp_stand$info$n_cells_x * tmp_stand$info$cell_size,
-                                          by = tmp_stand$info$cell_size),
-                                      digits = 1)) +
-    scale_y_continuous(breaks = seq(0, tmp_stand$info$n_cells_y * tmp_stand$info$cell_size,
-                                    by = tmp_stand$info$cell_size),
-                       labels = round(seq(0, tmp_stand$info$n_cells_y * tmp_stand$info$cell_size,
-                                          by = tmp_stand$info$cell_size),
-                                      digits = 1)) +
-    xlab("") + ylab("") +
-    
-    labs(title = site,
-         subtitle = paste0(round(tmp_stand$info$core_area_ha, 2), "ha - ",
-                           round(tmp_stand$info$core_batot_m2ha, 2), "m2/ha - ",
-                           nrow(tmp_stand$trees), "trees",
-                           "\n",
-                           "(long ", round(data_plot$longitude, 2), ", lat ", 
-                           round(data_plot$latitude, 2), ") - ",
-                           "slope = ", round(data_plot$slope, 1), 
-                           ", aspect = ", round(data_plot$aspect),
-                           ", northToX = ", round(data_plot$northToX))) +
-    
-    theme_minimal() +
-    theme(panel.grid.minor = element_blank(),
-          legend.position = "right",
-          plot.title = element_text(hjust = 0.5),
-          plot.subtitle = element_text(hjust = 0.5)) 
-  
-  # Print plot
-  plot(stand_plot)
-}
-```
-
-```{r}
-# Get data
-tar_load(init_db)
-
-# Set the cell size, which will not impact the study as we compute light only on sensors
-cell_size <- 10
-
-# Sites names
-site_names <- init_db$plots$name
-```
-
-## IRRES
-
-```{r}
-for (site in site_names[grepl("IRRES", site_names)]) {
-  plot_stand(init_db, site, cell_size)
-}
-```
-
-## CLOTURE
-
-```{r}
-for (site in site_names[grepl("Cloture", site_names)]) {
-  plot_stand(init_db, site, cell_size)
-}
-```
-
-## INRAe
-
-```{r}
-for (site in site_names[unique(c(grep("Ventoux", site_names), grep("Lorris", site_names),  grep("Fontfreyde", site_names)))]) {
-  plot_stand(init_db, site, cell_size)
-}
-```
-
-## UCLouvain
-
-```{r}
-for (site in site_names[grepl("Baileux", site_names)]) {
-  plot_stand(init_db, site, cell_size)
-}
-```
 
 
 # Preliminary analysis
@@ -344,453 +160,99 @@ The mean LAD over all sensors that converged was about `r round(mean(output_lad_
 
 # Bayesian calibration
 
-<!-- # ```{r} -->
-<!-- # load("output/calib/out_20251202_clean.Rdata") -->
-<!-- # ``` -->
-
-
-<!-- ## Observe the effect of sensors filtering -->
-
-<!-- A first Bayesian approach would be to also fit a mean LAD value on the sensors that converged with the previous method, by considering a hierarchical random effect (site into origin, mandatory according to the structure our our dataset). -->
-
-<!-- The model can be written as: -->
-<!-- $LAD_{p} = a_{0} + a_{0,p} + \epsilon$, where $a_{0}$ is the LAD intercept and $a_{0,p}$ is a random hierarchical site effect, nested within an origin effect (4 origins of the plots within UCLouvain, INRAe, Cloture and IRRES). -->
-
-
-<!-- ```{r} -->
-<!-- mods_exp1 <- c("1_1", "1_2") -->
-<!-- out_exp1 <- out_list$output[mods_exp1]   -->
-<!-- ``` -->
-
-
-<!-- ### Computation time -->
-
-<!-- ```{r} -->
-<!-- dplyr::left_join( -->
-
-<!--   # Experimental design -->
-<!--   out_list$exp_design %>%  -->
-<!--     dplyr::filter(id_simu %in% mods_exp1), -->
-
-<!--   # Comutation times -->
-<!--   out_exp1 %>%  -->
-<!--     purrr::map(~data.frame(time_hours = as.numeric(.x$computation_time,  -->
-<!--                                              units = "hours"))) %>%  -->
-<!--     dplyr::bind_rows(.id = "id_simu"), -->
-
-<!--   by = "id_simu" -->
-<!-- ) %>%  -->
-
-<!--   dplyr::select(id_mod, n_chains, n_iterations,  -->
-<!--                 filter_sensors,  -->
-<!--                 time_hours) %>%  -->
-<!--   as.data.frame() -->
-<!-- ``` -->
-
-
-<!-- ### Compare models and intercept predictions -->
-
-<!-- ```{r plot_exp1} -->
-<!-- # Get models evalution  outputs  -->
-<!-- eval_exp1_list <- out_list$evaluation$indicators[mods_exp1]  -->
-
-<!-- # Parameters -->
-<!-- n_analysis_exp1 <- 5000 -->
-<!-- thinning_exp1 <- 1 -->
-
-
-
-<!-- # Compute mean LAD distribution -->
-<!-- lad_exp1 <- out_exp1 %>%  -->
-<!--   purrr::map(~.x$outputs %>%  -->
-<!--                getSample(start = nrow(.x$outputs$chain[[1]]) - n_analysis_exp1,  -->
-<!--                          end = NULL,  -->
-<!--                          thin = thinning_exp1, -->
-<!--                          coda = TRUE) %>% -->
-<!--                purrr::map(~as.data.frame(.x) %>% -->
-<!--                             dplyr::mutate(iteration = row_number()) %>% -->
-<!--                             dplyr::relocate(iteration)) %>% -->
-<!--                dplyr::bind_rows(.id = "subchain")) %>% -->
-<!--   dplyr::bind_rows(.id = "id_simu") %>%  -->
-<!--   dplyr::mutate( -->
-<!--     sigma = exp(sigma_log), -->
-<!--     lad = exp(intercept + 0.5*sigma^2) # do not forget to add variance term, as here we compute the mean of a log-normal   -->
-<!--   ) %>%  -->
-<!--   dplyr::left_join(out_list$exp_design, by = "id_simu") -->
-
-
-
-<!-- # Compute LAD summaries -->
-<!-- summaries_exp1 <- lad_exp1 %>%  -->
-<!--   dplyr::group_by(id_simu, filter_sensors) %>%  -->
-<!--   dplyr::summarise( -->
-<!--     lad_qt025 = quantile(lad, 0.025), -->
-<!--     lad_median = quantile(lad, 0.5), -->
-<!--     lad_qt975 = quantile(lad, 0.975) -->
-<!--   ) %>%  -->
-<!--   dplyr::ungroup() -->
-
-<!-- print(summaries_exp1 %>% as.data.frame()) -->
-
-
-
-<!-- # Create plot label -->
-<!-- summaries_exp1 <- summaries_exp1 %>%  -->
-<!--   dplyr::mutate(mod_label = paste0(filter_sensors, " | ", round(lad_median, 3))) -->
-
-<!-- lad_exp1 <- lad_exp1 %>%  -->
-<!--   dplyr::left_join(summaries_exp1, by = "id_simu") -->
-
-<!-- eval_exp1 <- eval_exp1_list %>% -->
-<!--   dplyr::bind_rows(.id = "id_simu") %>%  -->
-<!--   dplyr::left_join(summaries_exp1, by = "id_simu") -->
-
-
-<!-- # Compute summaries of MAE and RMSE -->
-<!-- summaries_eval_exp1 <- eval_exp1 %>%  -->
-<!--   dplyr::group_by(id_simu, filter_sensors) %>%  -->
-<!--   dplyr::summarise( -->
-
-<!--     mae_qt025 = quantile(MAE, 0.025), -->
-<!--     mae_median = quantile(MAE, 0.5), -->
-<!--     mae_qt975 = quantile(MAE, 0.975), -->
-
-<!--     rmse_qt025 = quantile(RMSE, 0.025), -->
-<!--     rmse_median = quantile(RMSE, 0.5), -->
-<!--     rmse_qt975 = quantile(RMSE, 0.975) -->
-
-<!--   ) %>%  -->
-<!--   dplyr::ungroup() -->
-
-<!-- print(summaries_eval_exp1 %>% as.data.frame()) -->
-
-
-
-<!-- # Plot summaries and distribution of LAD -->
-<!-- plot_exp1_lad <- lad_exp1 %>%  -->
-
-<!--   ggplot(aes(x = lad, color = mod_label)) + -->
-
-<!--   geom_vline(data = summaries_exp1,  -->
-<!--              aes(xintercept = lad_qt025, color = mod_label), -->
-<!--              linewidth = 0.9, linetype = "dotted", alpha = 0.7) + -->
-<!--   geom_vline(data = summaries_exp1,  -->
-<!--              aes(xintercept = lad_median, color = mod_label), -->
-<!--              linewidth = 0.9, linetype = "dashed", alpha = 0.7) + -->
-<!--   geom_vline(data = summaries_exp1,  -->
-<!--              aes(xintercept = lad_qt975, color = mod_label), -->
-<!--              linewidth = 0.9, linetype = "dotted", alpha = 0.7) + -->
-
-<!--   geom_density(linewidth = 0.5) + -->
-
-<!--   xlab("Intercept prediction") + -->
-<!--   ylab("density") + -->
-<!--   labs(title = "Effect of sensors filtering based on the preliminary analysis", -->
-<!--        subtitle = "calibration of a single log(LAD) with site/origin random effects", -->
-<!--        color = "filter sensors | median LAD") + -->
-
-<!--   scale_color_manual(values = c("salmon", "forestgreen")) + -->
-<!--   theme_bw() + -->
-<!--   theme(plot.title = element_text(hjust = 0.5), -->
-<!--         plot.subtitle = element_text(hjust = 0.5), -->
-<!--         legend.position = "top") + -->
-<!--   guides(colour = guide_legend(title.position = "top", title.hjust = 0.5)) -->
-
-
-
-<!-- # Get the legend and titles and remove it from first graphic -->
-<!-- plot_exp1_title <- cowplot::get_title(plot_exp1_lad) -->
-<!-- plot_exp1_subtitle <- cowplot::get_subtitle(plot_exp1_lad) -->
-<!-- plot_exp1_legend <- cowplot::get_legend(plot_exp1_lad) -->
-
-<!-- plot_exp1_lad <- plot_exp1_lad +  -->
-<!--   theme(legend.position = "none") + -->
-<!--   labs(title = NULL, subtitle = NULL) -->
-
-
-
-
-<!-- # Plot the MAE -->
-<!-- plot_exp1_mae <- eval_exp1 %>%  -->
-
-<!--   ggplot(aes(x = MAE, color = mod_label)) + -->
-<!--   geom_density(linewidth = 0.5) + -->
-
-<!--   xlab("Mean Absolute Error between PACLs") + -->
-<!--   ylab("density") + -->
-<!--   scale_color_manual(values = c("salmon", "forestgreen")) + -->
-<!--   theme_bw() + -->
-<!--   theme(legend.position = "none") -->
-
-
-
-<!-- # Combine graphs -->
-<!-- cowplot::plot_grid( -->
-
-<!--   plot_exp1_title, -->
-<!--   plot_exp1_subtitle, -->
-
-<!--   plot_exp1_legend, -->
-
-<!--   cowplot::plot_grid( -->
-<!--     plot_exp1_lad, plot_exp1_mae, -->
-<!--     nrow = 1, rel_widths = c(1, 1) -->
-<!--   ), -->
-
-<!--   ncol = 1, rel_heights = c(1, 1, 2, 12) -->
-<!-- ) -->
-<!-- ``` -->
-
-
-<!-- ### Observe convergence -->
-
-<!-- ```{r} -->
-<!-- trace_exp1 <- out_exp1 %>%  -->
-<!--   purrr::map(~.x$outputs %>%  -->
-<!--                getSample(start = 0,  -->
-<!--                          end = NULL,  -->
-<!--                          thin = 1, -->
-<!--                          coda = TRUE) %>% -->
-<!--                purrr::map(~as.data.frame(.x) %>% -->
-<!--                             dplyr::mutate(iteration = row_number()) %>% -->
-<!--                             dplyr::relocate(iteration)) %>% -->
-<!--                dplyr::bind_rows(.id = "subchain")) %>% -->
-<!--   dplyr::bind_rows(.id = "id_simu") %>%  -->
-
-<!--   tidyr::pivot_longer(!c(id_simu, subchain, iteration), -->
-<!--                       names_to = "parameter", -->
-<!--                       values_to = "estimate") %>%  -->
-
-<!--   dplyr::left_join(out_list$exp_design, by = "id_simu") %>%  -->
-<!--   dplyr::mutate( -->
-<!--     sensor_label = ifelse(filter_sensors, "WITH filter", "NO filter") -->
-<!--   ) %>%  -->
-
-<!--   dplyr::filter(parameter %in% c("intercept", "sigma_log", "sigma_origin_log", "sigma_site_log")) -->
-
-
-<!-- trace_exp1 %>%  -->
-
-<!--   ggplot(aes(y = estimate, x = iteration, color = subchain)) + -->
-<!--   facet_grid(cols = vars(parameter), rows = vars(sensor_label), -->
-<!--              scales = "free") + -->
-
-<!--   geom_line() + -->
-<!--   geom_vline(xintercept = max(trace_exp1$iteration) - n_analysis_exp1, -->
-<!--              linetype = "dashed") + -->
-
-<!--   labs(title = "Convergence of the models with or without sensors filtering", -->
-<!--        subtitle = "calibration of a single log(LAD) without site/origin random effects") + -->
-
-<!--   theme_bw() + -->
-<!--   theme(plot.title = element_text(hjust = 0.5), -->
-<!--         plot.subtitle = element_text(hjust = 0.5)) -->
-<!-- ``` -->
-
-
-
-## Clean model: species X DBH with covariance
-
-100,000 iterations and 3 chains
+50,000 iterations (20,000 burning), 5 chain, for BATOTxDBH model angio/gymno
 
 ```{r}
-load("output/calib/out_20251227_completeModelv2.Rdata")
-
-# Parameters
-n_analysis_clean <- 1000
-thinning_clean <- 1
-
-out_list$exp_design
+load("output/calib/out_20260113_dbhXbatot_phylogeny.Rdata")
 ```
 
-
-### Computation time
-
 ```{r}
-out_list$output %>% 
-  purrr::map(~data.frame(
-    model = .x$id_model,
-    chain = .x$i_chain,
-    time_hours = as.numeric(.x$computation_time, 
-                            units = "hours"))) %>% 
-  dplyr::bind_rows() %>% 
-  as.data.frame()
-```
-
-
-### Observe convergence
-
-```{r}
-trace_clean <- out_list$output %>% 
+data_trace <- output_models_list$output %>% 
   purrr::map(~.x$output) %>% 
-  setNames(out_list$output %>% purrr::map(~paste(.x$id_model, .x$i_chain, sep = "_"))) %>% 
+  setNames(output_models_list$output %>% purrr::map(~.x$id_model)) %>% 
   purrr::map(~.x %>% 
-               getSample(start = 0, 
-                         end = NULL, 
-                         thin = 10,
-                         coda = TRUE) %>%
-               purrr::map(~as.data.frame(.x) %>%
-                            dplyr::mutate(iteration = row_number()) %>%
-                            dplyr::relocate(iteration)) %>%
-               dplyr::bind_rows(.id = "subchain")) %>%
-  dplyr::bind_rows(.id = "id_simu") %>%
-  tidyr::separate(id_simu, c("model", "chain"), sep = "_") %>% 
+               purrr::map(~.x %>% 
+                            getSample(coda = TRUE) %>%
+                            purrr::map(~as.data.frame(.x) %>%
+                                         dplyr::mutate(iteration = row_number()) %>%
+                                         dplyr::relocate(iteration)) %>%
+                            dplyr::bind_rows(.id = "subchain")) %>%
+               dplyr::bind_rows(.id = "chain")
+  ) %>% 
+  
+  dplyr::bind_rows(.id = "id_model") %>% 
   
   # Called the non species-specific model a mean species 
-  dplyr::select(model, chain, subchain, iteration,
+  dplyr::select(id_model, chain, subchain, iteration,
                 sigma_log, sigma_site_log, sigma_origin_log,
-                sigma_intercept_log, sigma_dbh_log,
-                intercept, dbh,
-                mean_intercept, mean_dbh, rho_raw,
-                contains("z_intercept"), 
-                contains("z_dbh")) %>% 
-  
-  dplyr::mutate(
-    mean_intercept = coalesce(intercept, mean_intercept),
-    mean_dbh = coalesce(dbh, mean_dbh)
-  ) %>% 
-  dplyr::select(-c(intercept, dbh)) %>% 
-  
-  tidyr::pivot_longer(!c(model, chain, subchain, iteration),
+                intercept.angiosperm, intercept.gymnosperm,
+                dbh.angiosperm, dbh.gymnosperm,
+                batot.angiosperm, batot.gymnosperm,
+                dbhXbatot.angiosperm, dbhXbatot.gymnosperm) %>% 
+  tidyr::pivot_longer(!c(id_model, chain, subchain, iteration),
                       names_to = "parameter",
-                      values_to = "estimate")
+                      values_to = "estimate") %>% 
+  
+  dplyr::filter(id_model == 1)
+```
 
 
+## Model sigmas
 
-# Model sigmas
-trace_clean %>% 
+```{r}
+data_trace %>% 
   
   dplyr::filter(parameter %in% c("sigma_log", "sigma_site_log", "sigma_origin_log")) %>% 
   
   ggplot(aes(y = estimate, x = iteration, 
              color = chain, linetype = subchain)) +
-  facet_grid(parameter~model, scales = "free") +
+  facet_wrap(~parameter, scales = "free", ncol = 2) +
   geom_line() +
-  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean/10,
-             linetype = "dashed") +
   
-  labs(title = "Convergence of the sigma parameters") +
+  labs(title = "Convergence of the sigma parameters",
+       subtitle = "batot*dbh for angiosperms and gymnosperms") +
   
   theme_bw() +
   theme(plot.title = element_text(hjust = 0.5),
         plot.subtitle = element_text(hjust = 0.5))
+```
 
+## Model for angiosperm
 
-# Model intercepts
-trace_clean %>% 
+```{r}
+data_trace %>% 
   
-  dplyr::filter(grepl("intercept", parameter),
-                !grepl("z_", parameter)) %>% 
+  dplyr::filter(grepl("angiosperm", parameter)) %>% 
   
   ggplot(aes(y = estimate, x = iteration, 
              color = chain, linetype = subchain)) +
-  facet_grid(parameter~model, scales = "free") +
+  facet_wrap(~parameter, scales = "free") +
   geom_line() +
   
-  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean/10,
-             linetype = "dashed") +
-  
-  labs(title = "Convergence of the intercept parameters") +
-  
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5))
-
-
-trace_clean %>% 
-  
-  dplyr::filter(model != 1,
-                grepl("intercept", parameter),
-                grepl("z_", parameter)) %>% 
-  
-  dplyr::mutate(id = paste(
-    gsub("z_intercept.", "", parameter),
-    "_",
-    model
-  )) %>% 
-  
-  ggplot(aes(y = estimate, x = iteration, 
-             color = chain, linetype = subchain)) +
-  facet_wrap(~id, scales = "free") +
-  geom_line() +
-  
-  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean/10,
-             linetype = "dashed") +
-  
-  labs(title = "Convergence of the intercept parameters") +
-  
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5))
-
-
-# Model dbh
-trace_clean %>% 
-  
-  dplyr::filter(grepl("dbh", parameter),
-                !grepl("z_", parameter)) %>% 
-  
-  ggplot(aes(y = estimate, x = iteration, 
-             color = chain, linetype = subchain)) +
-  facet_grid(parameter~model, scales = "free") +
-  geom_line() +
-  
-  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean/10,
-             linetype = "dashed") +
   geom_hline(yintercept = 0) +
   
-  labs(title = "Convergence of the dbh parameters") +
+  labs(title = "Convergence of the parameters for angiosperms") +
   
   theme_bw() +
   theme(plot.title = element_text(hjust = 0.5),
         plot.subtitle = element_text(hjust = 0.5))
+```
+   
+## Model for gymnosperm
 
-
-trace_clean %>% 
+```{r}
+data_trace %>% 
   
-  dplyr::filter(model != 1,
-                grepl("dbh", parameter),
-                grepl("z_", parameter)) %>% 
-  
-  dplyr::mutate(id = paste(
-    gsub("z_dbh.", "", parameter),
-    "_",
-    model
-  )) %>% 
+  dplyr::filter(grepl("gymnosperm", parameter)) %>% 
   
   ggplot(aes(y = estimate, x = iteration, 
              color = chain, linetype = subchain)) +
-  facet_wrap(~id, scales = "free") +
+  facet_wrap(~parameter, scales = "free") +
   geom_line() +
   
-  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean/10,
-             linetype = "dashed") +
-  
-  labs(title = "Convergence of the intercept parameters") +
-  
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5))
-
-
-# Rho parameter
-trace_clean %>% 
-  
-  dplyr::filter(parameter == "rho_raw",
-                model == 3) %>% 
-  dplyr::mutate(rho = 2*plogis(estimate) - 1) %>% 
-  
-  ggplot(aes(y = rho, x = iteration, 
-             color = chain, linetype = subchain)) +
-  facet_grid(chain~subchain, scales = "free") +
-  geom_line() +
-  
-  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean/10,
-             linetype = "dashed") +
   geom_hline(yintercept = 0) +
   
-  labs(title = "Convergence of the rho parameter",
-       subtitle = "Model 3: speciesXdbh with covariance") +
+  labs(title = "Convergence of the parameters for gymnosperms") +
   
   theme_bw() +
   theme(plot.title = element_text(hjust = 0.5),
@@ -798,400 +260,104 @@ trace_clean %>%
 ```
 
 
-### Effect of DBH for each species
+# Main analysis
 
 ```{r}
-dbh_cm_small <- 10
-dbh_cm_large <- 60
+load("output/data/outdata_20260113_dbhXbatot_phylogeny.Rdata")
 
-# Compute mean LAD distribution
-params_clean <- out_list$output %>% 
-  purrr::map(~.x$output) %>% 
-  setNames(out_list$output %>% purrr::map(~paste(.x$id_model, .x$i_chain, sep = "_"))) %>% 
-  purrr::map(~.x %>% 
-               getSample(start = nrow(.x$chain[[1]]) - n_analysis_clean, 
-                         end = NULL, 
-                         thin = thinning_clean,
-                         coda = TRUE) %>%
-               purrr::map(~as.data.frame(.x) %>%
-                            dplyr::mutate(iteration = row_number()) %>%
-                            dplyr::relocate(iteration)) %>%
-               dplyr::bind_rows(.id = "subchain")) %>%
-  dplyr::bind_rows(.id = "id_simu") %>% 
-  tidyr::separate(id_simu, c("model", "chain"), sep = "_") %>% 
-  
-    # Compute the LAD for each species
-  dplyr::select(model, chain, subchain, iteration,
-                sigma_log, sigma_site_log, sigma_origin_log,
-                sigma_intercept_log, sigma_dbh_log,
-                intercept, dbh,
-                mean_intercept, mean_dbh,
-                contains("z_intercept"), contains("z_dbh"),
-                rho_raw) %>% 
-  
+tar_load(data_stands)
+tar_load(LAD_CONTROL)
+
+data_crown <- data_stands %>% 
+  purrr::map(~.x$trees) %>% 
+  dplyr::bind_rows(.id = "site_name") %>% 
   dplyr::mutate(
-    mean_intercept = coalesce(intercept, mean_intercept),
-    mean_dbh = coalesce(dbh, mean_dbh)
+    rmean_m = (rn_m + rs_m + re_m + rw_m) / 4,
+    cdepth_m = h_m - hbase_m
+  )
+
+data_compo <- data_crown %>%  
+  dplyr::group_by(site_name, batot_m2ha) %>% 
+  dplyr::summarise(G_angio = sum( (phylogeny == "angiosperm") * G_ha ),
+                   G_gymno = sum( (phylogeny == "gymnosperm") * G_ha ),
+                   prop_angio = G_angio / sum(G_ha))
+
+data_output_tree <- output_data_list$data_output_tree
+data_output_stand <- output_data_list$data_output_stand
+data_output_light_trees <- output_data_list$data_output_light$trees
+data_output_light_stand <- output_data_list$data_output_light$stand
+```
+
+```{r}
+# Define modalities for graphs
+params <- output_models_list$params[[1]]
+
+batot_m2ha_low <- 10
+batot_m2ha_high <- 40
+```
+
+
+## LAD predictions from model calibration
+
+```{r}
+## ------- LAD = f(DBH) for two BATOT ----
+tidyr::crossing(
+    params,
+    dbh_cm = seq(
+      quantile(output_models_list$setup[[1]]$dbh_vect, 0.025),
+      quantile(output_models_list$setup[[1]]$dbh_vect, 0.975),
+      length.out = 100
+    ),
+    compet_intensity = c("low", "high")
   ) %>% 
-  dplyr::select(-c(intercept, dbh)) %>% 
-  
-  tidyr::pivot_longer(!c(model, chain, subchain, iteration,
-                         sigma_log, sigma_site_log, sigma_origin_log,
-                         sigma_intercept_log, sigma_dbh_log,
-                         mean_intercept, mean_dbh, rho_raw),
-                      names_pattern = "z_(.*)\\.(.*)",
-                      names_to = c("param", "species"),
-                      values_to = "z") %>% 
-  
-  tidyr::pivot_wider(values_from = "z", 
-                     names_from = "param",
-                     names_prefix = "z_") %>% 
   
   dplyr::mutate(
+    
+    # Set ref modalities for plot
+    batot_m2ha = ifelse(compet_intensity == "low",
+                        batot_m2ha_low,
+                        batot_m2ha_high),
     
     # Exponentiate sigmas
     sigma_mod = exp(sigma_log),
     sigma_site = exp(sigma_site_log),
     sigma_origin = exp(sigma_origin_log),
-    sigma_intercept = ifelse(is.na(sigma_intercept_log), 0, exp(sigma_intercept_log)),
-    sigma_dbh = ifelse(is.na(sigma_dbh_log), 0, exp(sigma_dbh_log)),
     
-    # Compute the rho parameter (covariance)
-    rho_raw = ifelse(is.na(rho_raw), 0, rho_raw),
-    rho = 2*plogis(rho_raw) - 1,
-    sqrt1mr2 = sqrt(1 - rho^2),
-    
-    # Set to 0 if z are NA
-    z_intercept = ifelse(is.na(z_intercept), 0, z_intercept),
-    z_dbh = ifelse(is.na(z_dbh), 0, z_dbh),
-    
-    # Compute the species specific intercept and dbh effect
-    intercept_spspe = mean_intercept + sigma_intercept * z_intercept,
-    dbh_spspe = mean_dbh + sigma_dbh * (rho * z_intercept + sqrt1mr2 *z_dbh)
-  ) %>% 
-  
-  # Compute variance (do not forget that we fit a log_normal LAD, thus consider variance term when back transforming)
-  dplyr::mutate(
-    variance_sum = sigma_mod^2 + sigma_site^2 + sigma_origin^2 + sigma_intercept^2 + sigma_dbh^2
-  )
-  
-
-# Observe covariance parameter (same between species)
-params_clean %>% 
-  dplyr::group_by(model, chain, subchain) %>% 
-  dplyr::summarise(
-    rho_lower = quantile(rho, 0.025),
-    rho_median = median(rho),
-    rho_upper = quantile(rho, 0.975)
-  )
-
-# Get models
-mod_names <- c("mean species", "sp-specific no covar", "sp_specific with covar")
-
-# Plot LAD prediction along dbh for a mean species gradient for each model 
-for (i in 1:nrow(out_list$exp_design)) {
-  
-  tmp_plt <- tidyr::crossing(
-    params_clean %>% 
-      dplyr::filter(model == i),
-    dbh_cm = seq(
-      quantile(out_list$setup[[1]]$dbh_vect, 0.025),
-      quantile(out_list$setup[[1]]$dbh_vect, 0.975),
-      length.out = 100
-    )
-  ) %>% 
-    
-    dplyr::mutate(
-      dbh_std = (dbh_cm - out_list$setup[[1]]$dbh_mean) / out_list$setup[[1]]$dbh_sd
-    ) %>% 
-    
-    dplyr::mutate(
-      lad = exp(intercept_spspe + dbh_std * dbh_spspe + 0.5*variance_sum)
-    ) %>% 
-    
-    dplyr::group_by(model, chain, subchain, species, dbh_cm) %>% 
-    dplyr::summarise(
-      lad_median = median(lad),
-      lad_lower = quantile(lad, 0.025),
-      lad_upper = quantile(lad, 0.975)
-    ) %>% 
-    
-    ggplot(aes(y = lad_median, x = dbh_cm, 
-               color = chain, linetype = subchain)) +
-    facet_wrap(~species, scales = "free_y") +
-    
-    geom_line() +
-    geom_ribbon(aes(ymin = lad_lower, ymax = lad_upper,
-                    fill = chain, linetype = subchain),
-                color = NA,
-                alpha = 0.4) +
-    
-    xlab("DBH (in cm)") +
-    ylab("LAD prediction") +
-    labs(title = paste("LAD predictions for model", mod_names[i]),
-         subtitle = "between 2.5% and 97.5% quantiles of all species observed DBH") +
-    
-    theme_bw() +
-    theme(legend.position = "right",
-          plot.title = element_text(hjust = 0.5),
-          plot.subtitle = element_text(hjust = 0.5))
-  
-  print(tmp_plt)
-}
-
-# Plot LAD prediction for two dbh
-for (i in 1:nrow(out_list$exp_design)) {
-  
-  lad_clean_2sizes <- tidyr::crossing(
-    params_clean %>% 
-      dplyr::filter(model == i),
-    tree_size = c("small", "large")
-  ) %>% 
-    
-    dplyr::mutate(
-      dbh_cm = ifelse(tree_size == "small",
-                      dbh_cm_small,
-                      dbh_cm_large),
-      
-      dbh_std = (dbh_cm - out_list$setup[[1]]$dbh_mean) / out_list$setup[[1]]$dbh_sd
-      
-    ) %>% 
-    
-    dplyr::mutate(
-      lad = exp(intercept_spspe + dbh_std * dbh_spspe + 0.5*variance_sum)
-    ) %>% 
-    
-    dplyr::group_by(chain, species, tree_size) %>% 
-    dplyr::summarise(
-      lad_lower = quantile(lad, 0.025),
-      lad_median = median(lad),
-      lad_upper = quantile(lad, 0.975)
-    ) %>% 
-    
-    dplyr::mutate(species = gsub("_", "", species),
-                  order = case_match(species,
-                                     c("Abiesalba", "Larixdecidua",
-                                       "Piceaabies", "Pinussylvestris",
-                                       "Pseudotsugamenziesii") ~ "gymnosperm",
-                                     c("Carpinusbetulus", "Fagussylvatica",
-                                       "Quercussp", "other") ~ "angiosperm"))
-  
-  tmp_plt <- lad_clean_2sizes %>%
-    
-    ggplot(aes(y = interaction(tree_size, species),
-               color = species, shape = order)) +
-    facet_wrap(~chain, scales = "free_x") +
-    
-    geom_pointrange(mapping = aes(x = lad_median, 
-                                  xmin = lad_lower, 
-                                  xmax = lad_upper)) +
-    
-    scale_y_discrete(NULL, guide = "axis_nested") +
-    xlab("LAD distribution") +
-    ylab("") +
-    labs(title = paste("LAD predictions for model", mod_names[i]),
-         subtitle = paste0("for a small tree (dbh = ",
-                           dbh_cm_small,
-                           "cm) and a large tree (dbh = ",
-                           dbh_cm_large,
-                           "cm)"),
-         colour = "species") +
-    
-    theme_bw() +
-    theme(legend.position = "top",
-          plot.title = element_text(hjust = 0.5),
-          plot.subtitle = element_text(hjust = 0.5),
-          axis.text.y = element_text(size = 7)) +
-    guides(colour = "none")
-  
-  
-  print(tmp_plt)
-}
-```
-
-
-
-## Effect of BAxDBH
-
-100,000 iterations and 1 chain
-
-```{r}
-load("output/calib/out_20251218_dbhXbatot.Rdata")
-
-# Parameters
-n_analysis_clean <- 15000
-thinning_clean <- 15
-
-out_list$exp_design
-```
-
-### Computation time
-
-```{r}
-out_list$output %>% 
-  purrr::map(~data.frame(
-    id_model = .x$id_model,
-    time_hours = as.numeric(.x$computation_time, 
-                            units = "hours"))) %>% 
-  dplyr::bind_rows() %>% 
-  as.data.frame()
-```
-
-### Observe convergence
-
-```{r}
-trace_clean <- out_list$output %>% 
-  purrr::map(~.x$output) %>% 
-  setNames(out_list$output %>% purrr::map(~.x$id_model)) %>% 
-  purrr::map(~.x %>% 
-               getSample(start = 0, 
-                         end = NULL, 
-                         thin = 1,
-                         coda = TRUE) %>%
-               purrr::map(~as.data.frame(.x) %>%
-                            dplyr::mutate(iteration = row_number()) %>%
-                            dplyr::relocate(iteration)) %>%
-               dplyr::bind_rows(.id = "subchain")) %>%
-  dplyr::bind_rows(.id = "id_model") %>% 
-  
-  # Called the non species-specific model a mean species 
-  dplyr::select(id_model, subchain, iteration,
-                sigma_log, sigma_site_log, sigma_origin_log,
-                intercept, dbh, batot, dbhXbatot) %>% 
-  tidyr::pivot_longer(!c(id_model, subchain, iteration),
-                      names_to = "parameter",
-                      values_to = "estimate")
-
-
-# Model sigmas
-trace_clean %>% 
-  
-  dplyr::filter(parameter %in% c("sigma_log", "sigma_site_log", "sigma_origin_log")) %>% 
-  
-  ggplot(aes(y = estimate, x = iteration, color = subchain)) +
-  facet_grid(parameter~id_model, scales = "free") +
-  geom_line() +
-  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean,
-             linetype = "dashed") +
-  
-  labs(title = "Convergence of the sigma parameters",
-       subtitle = "species*dbh with covariance") +
-  
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5))
-
-
-# Model predictors
-trace_clean %>% 
-  
-  dplyr::filter(parameter %in% c("intercept", "dbh", "batot", "dbhXbatot")) %>% 
-  
-  ggplot(aes(y = estimate, x = iteration, 
-             color = id_model, linetype = subchain)) +
-  facet_wrap(~parameter, scales = "free", nrow = 1) +
-  geom_line() +
-  
-  geom_vline(xintercept = max(trace_clean$iteration) - n_analysis_clean,
-             linetype = "dashed") +
-  geom_hline(yintercept = 0) +
-  
-  labs(title = "Convergence of the predictors parameters",
-       subtitle = "species*dbh with covariance") +
-  
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5),
-        legend.position = "top")
-```
-
-
-### Effect of DBH X batot on a mean species
-
-```{r}
-tar_load(output_params)
-tar_load(models_setup)
-
-# Define modalities for graphs
-dbh_cm_small <- 10
-dbh_cm_large <- 60
-
-batot_m2ha_low <- 10
-batot_m2ha_high <- 40
-
-
-# Plot LAD prediction along dbh for a mean species gradient for each model 
-data_plt_dbhXbatot <- dplyr::bind_rows(
-  
-  # Effect of DBH for two BATOT
-  tidyr::crossing(
-    var_x = "dbh",
-    output_params[[1]],
-    dbh_cm = seq(
-      quantile(models_setup[[1]]$dbh_vect, 0.025),
-      quantile(models_setup[[1]]$dbh_vect, 0.975),
-      length.out = 100
-    ),
-    compet_intensity = c("low", "high")
-  ),
-  
-  # Effect of BATOT for two DBH
-  tidyr::crossing(
-    var_x = "batot",
-    output_params[[1]],
-    batot_m2ha = seq(
-      quantile(models_setup[[1]]$batot_vect, 0.025),
-      quantile(models_setup[[1]]$batot_vect, 0.975),
-      length.out = 100
-    ),
-    tree_size = c("small", "large")
-  )
-  
-) %>% 
-  
-  dplyr::mutate(
-    
-    # Set ref modalities for plot
-    dbh_cm = ifelse(var_x == "batot",
-                    ifelse(tree_size == "small",
-                           dbh_cm_small,
-                           dbh_cm_large),
-                    dbh_cm),
-                    
-    batot_m2ha = ifelse(var_x == "dbh",
-                    ifelse(compet_intensity == "low",
-                           batot_m2ha_low,
-                           batot_m2ha_high),
-                    batot_m2ha),
-    
-    # Exponentiate sigmas
-          sigma_mod = exp(sigma_log),
-          sigma_site = exp(sigma_site_log),
-          sigma_origin = exp(sigma_origin_log),
-          
     # Compute variance (do not forget that we fit a log_normal LAD, 
     # thus consider variance term when back transforming)
     variance_sum = sigma_mod^2 + sigma_site^2 + sigma_origin^2,
     
     # Restandardize predictors
-    dbh_std = (dbh_cm - models_setup[[1]]$dbh_mean) / models_setup[[1]]$dbh_sd,
-    batot_std = (batot_m2ha - models_setup[[1]]$batot_mean) / models_setup[[1]]$batot_sd
+    dbh_std = (dbh_cm - output_models_list$setup[[1]]$dbh_mean) /
+      output_models_list$setup[[1]]$dbh_sd,
+    
+    batot_std = (batot_m2ha - output_models_list$setup[[1]]$batot_mean) /
+      output_models_list$setup[[1]]$batot_sd
   ) %>% 
   
   dplyr::mutate(
-    lad = exp(intercept + 
-                dbh_std * dbh + 
-                batot_std * batot +
-                dbh_std * batot_std * dbhXbatot + 
-                0.5*variance_sum)
-  ) 
-
-
-## ------- LAD = f(DBH) for two BATOT ----
-data_plt_dbhXbatot %>% 
-  dplyr::filter(var_x == "dbh") %>% 
+    lad_angiosperm = exp(intercept.angiosperm + 
+                           dbh_std * dbh.angiosperm + 
+                           batot_std * batot.angiosperm +
+                           dbh_std * batot_std * dbhXbatot.angiosperm + 
+                           0.5*variance_sum),
+    
+    lad_gymnosperm = exp(intercept.gymnosperm + 
+                           dbh_std * dbh.gymnosperm + 
+                           batot_std * batot.gymnosperm +
+                           dbh_std * batot_std * dbhXbatot.gymnosperm + 
+                           0.5*variance_sum)
+  ) %>% 
   
-  dplyr::group_by(dbh_cm, compet_intensity) %>% 
+  tidyr::pivot_longer(
+    c(lad_gymnosperm, lad_angiosperm),
+    values_to = "lad",
+    names_to = "phylogeny",
+    names_prefix = "lad_"
+  ) %>% 
+  
+  # Compute summary statistics
+  dplyr::group_by(dbh_cm, compet_intensity, phylogeny) %>% 
   dplyr::summarise(
     lad_median = median(lad),
     lad_lower = quantile(lad, 0.025),
@@ -1199,7 +365,8 @@ data_plt_dbhXbatot %>%
   ) %>% 
   
   ggplot(aes(y = lad_median, x = dbh_cm, color = compet_intensity)) +
-
+  facet_wrap(~phylogeny) +
+  
   geom_line() +
   geom_ribbon(aes(ymin = lad_lower, ymax = lad_upper,
                   fill = compet_intensity),
@@ -1212,36 +379,33 @@ data_plt_dbhXbatot %>%
        subtitle = "between 2.5% and 97.5% quantiles of all species observed DBH\nfor a total basal area of either 10m2ha (low) or 40m2ha (high)") +
   
   theme_bw() +
-  theme(legend.position = "right",
+  theme(legend.position = "top",
         plot.title = element_text(hjust = 0.5),
         plot.subtitle = element_text(hjust = 0.5)) +
-  scale_color_manual(values = c("low" = "olivedrab", "high" = "darkgreen")) +
-  scale_fill_manual(values = c("low" = "olivedrab", "high" = "darkgreen"))
+  scale_color_viridis_d() +
+  scale_fill_viridis_d()
+  # scale_color_manual(values = c("low" = "olivedrab", "high" = "darkgreen")) +
+  # scale_fill_manual(values = c("low" = "olivedrab", "high" = "darkgreen"))
+```
 
 
-## ------- LAD = f(BATOT) for two DBH ----
-data_plt_dbhXbatot %>% 
-  dplyr::filter(var_x == "batot") %>% 
-  
-  dplyr::group_by(batot_m2ha, tree_size) %>% 
-  dplyr::summarise(
-    lad_median = median(lad),
-    lad_lower = quantile(lad, 0.025),
-    lad_upper = quantile(lad, 0.975)
-  ) %>% 
-  
-  ggplot(aes(y = lad_median, x = batot_m2ha, color = tree_size)) +
+## Estimate LAD on initial data
 
-  geom_line() +
-  geom_ribbon(aes(ymin = lad_lower, ymax = lad_upper,
-                  fill = tree_size),
-              color = NA,
-              alpha = 0.4) +
+```{r}
+data_output_tree %>% 
   
-  xlab("Total basal area (in m2/ha)") +
-  ylab("LAD prediction") +
-  labs(title = "LAD models along a BATOT gradient",
-       subtitle = "between 2.5% and 97.5% quantiles of all plots observed BATOT\nfor a tree DBH of either 10cm (small) or 60cm (large)") +
+  ggplot(aes(y = lad_model_median, x = dbh_cm, color = batot_m2ha)) +
+  facet_wrap(~phylogeny) +
+  
+  geom_pointrange(aes(ymin = lad_model_lower, ymax = lad_model_upper),
+                  alpha = 0.5, size = 0.2) +
+  scale_color_viridis_c(direction = -1) +
+  
+  geom_hline(yintercept = LAD_CONTROL, linetype = "dashed", 
+             color = "black", linewidth = 1) +
+  
+  xlab("DBH (in cm)") +
+  ylab("Predicted leaf area density (in m2/ha)") +
   
   theme_bw() +
   theme(legend.position = "right",
@@ -1250,172 +414,40 @@ data_plt_dbhXbatot %>%
 ```
 
 
-# Output analysis
+
+## Link predicted LAD to observed tree crown volume
 
 ```{r}
-tar_load(data_calib)
-
-data_calib <- data_calib %>% 
-  purrr::map(~.x$trees) %>% 
-  dplyr::bind_rows() %>% 
-  
-  dplyr::mutate(
-    order = case_match(species_calib,
-                       c("Abies_alba", "Larix_decidua",
-                         "Picea_abies", "Pinus_sylvestris",
-                         "Pseudotsuga_menziesii") ~ "gymnosperm",
-                       c("Carpinus_betulus", "Fagus_sylvatica",
-                         "Quercus_sp", "other") ~ "angiosperm")
-  )
-```
-
-
-```{r}
-tar_load(data_output_tree)
-tar_load(data_output_stand)
-tar_load(data_output_light)
-tar_load(LAD_CONTROL)
-```
-
-## Observe initial data
-
-```{r}
-mod_cor <- lm(data = data_output_tree, 
-              formula = batot_m2ha ~ order)
-summary(mod_cor)
-```
-### Stand variables
-
-```{r}
-ggplot(data_output_tree, aes(y = batot_m2ha, x = order, color = order)) +
-  geom_boxplot() +
-  theme_bw() +
-  xlab("Tree clade") +
-  ylab("Stand basal area (in m2/ha)")
-
-ggplot(data_output_tree, aes(y = dbh_cm, x = order, color = order)) +
-  geom_boxplot() +
-  theme_bw() +
-  xlab("Tree clade") +
-  ylab("Tree DBH (in cm)")
-
-ggplot(data_output_tree, aes(y = batot_m2ha, x = species_calib, 
-                                  color = species_calib)) +
-  geom_boxplot() +
-  theme_bw() +
-  xlab("Tree species") +
-  ylab("Stand basal area (in m2/ha)")
-
-ggplot(data_output_tree, aes(y = dbh_cm, x = species_calib, 
-                                  color = species_calib)) +
-  geom_boxplot() +
-  theme_bw() +
-  xlab("Tree species") +
-  ylab("Tree DBH (in cm)")
-
-ggplot(data_output_tree, aes(y = dbh_cm, x = batot_m2ha, color = order)) +
-  geom_point() +
-  theme_bw() +
-  xlab("Stand basal area (in m2/ha)") +
-  ylab("Tree DBH (in cm)")
-  
-ggplot(data_output_tree, aes(y = dbh_cm, x = batot_m2ha, color = species_calib)) +
-  geom_point() +
-  theme_bw() +
-  xlab("Stand basal area (in m2/ha)") +
-  ylab("Tree DBH (in cm)")
-```
-
-
-### Crown dimensions
-
-```{r}
-ggplot(data_calib, aes(y = h_m, 
-                       x = dbh_cm, 
-                       color = batot_m2ha)) +
-  facet_wrap(~order) +
-  geom_point() +
-  geom_smooth(method = "gam") +
-  theme_bw() +
-  scale_color_viridis_c() +
-  xlab("Tree DBH (in cm)") +
-  ylab("Tree height (in m)")
-
-ggplot(data_calib, aes(y = hbase_m, 
-                       x = dbh_cm, 
-                       color = batot_m2ha)) +
-  facet_wrap(~order) +
-  geom_point() +
-  geom_smooth(method = "gam") +
-  theme_bw() +
-  scale_color_viridis_c() +
-  xlab("Tree DBH (in cm)") +
-  ylab("Crown base height (in m)")
-
-ggplot(data_calib, aes(y = h_m - hbase_m, 
-                       x = dbh_cm, 
-                       color = batot_m2ha)) +
-  facet_wrap(~order) +
-  geom_point() +
-  geom_smooth(method = "gam") +
-  theme_bw() +
-  scale_color_viridis_c() +
-  xlab("Tree DBH (in cm)") +
-  ylab("Crown depth (in m)")
-
-ggplot(data_calib, aes(y = (rn_m + rs_m + re_m + rw_m) / 4, 
-                       x = dbh_cm, 
-                       color = batot_m2ha)) +
-  facet_wrap(~order) +
-  geom_point() +
-  geom_smooth(method = "gam") +
-  theme_bw() +
-  scale_color_viridis_c() +
-  xlab("Tree DBH (in cm)") +
-  ylab("Mean crown radius (in m)")
-
-
-
-ggplot(data_output_tree, aes(y = volume_m3, 
-                             x = dbh_cm, 
-                             color = batot_m2ha)) +
-  facet_wrap(~order) +
-  geom_point() +
-  geom_smooth(method = "gam") +
-  theme_bw() +
-  scale_color_viridis_c() +
-  xlab("Tree DBH (in cm)") +
-  ylab("Tree crown volume (in m3)")
-```
-
-
-## Tree-level consequences on tree leaf area
-
-```{r}
-# --------- Prediction of LAD --------
 data_output_tree %>% 
+
+  ggplot(aes(y = lad_model_median, x = volume_m3, color = batot_m2ha)) +
+  facet_wrap(~phylogeny) +
   
-  ggplot(aes(y = lad_model_median, x = dbh_cm, color = batot_m2ha)) +
-  geom_pointrange(aes(ymin = lad_model_lower, ymax = lad_model_upper)) +
+  geom_pointrange(aes(ymin = lad_model_lower, ymax = lad_model_upper),
+                  alpha = 0.5, size = 0.2) +
+  scale_color_viridis_c(direction = -1) +
+
   geom_hline(yintercept = LAD_CONTROL, linetype = "dashed", 
-             color = "salmon", linewidth = 1.05) +
+             color = "black", linewidth = 1) +
   
-  xlab("DBH (in cm)") +
+  xlab("Crown volume (in m3)") +
   ylab("Predicted leaf area density (in m2/ha)") +
   
   theme_bw() +
   theme(legend.position = "right",
         plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5)) +
-  scale_color_viridis_c()
+        plot.subtitle = element_text(hjust = 0.5))
+```
 
 
-# --------- Prediction of LA --------
+## Tree-level consequences on total leaf area LA
+
+```{r}
 data_output_tree %>% 
-  dplyr::select(site_name, id_tree, dbh_cm, batot_m2ha, species_calib,
+  dplyr::select(site_name, id_tree, dbh_cm, batot_m2ha, species, phylogeny,
                 contains("la_"), -contains("diff_la")) %>% 
   tidyr::pivot_longer(
-    !c(site_name, id_tree, species_calib, dbh_cm, batot_m2ha),
+    !c(site_name, id_tree, species, phylogeny, dbh_cm, batot_m2ha),
     names_pattern = "la_(.*)_(.*)",
     names_to = c("lad_model", "var"),
     values_to = "leaf_area_m2"
@@ -1424,42 +456,68 @@ data_output_tree %>%
     names_from = "var",
     values_from = "leaf_area_m2"
   ) %>% 
-  
+
   ggplot(aes(y = median, x = dbh_cm, color = batot_m2ha)) +
-  facet_wrap(~lad_model) +
-  geom_pointrange(aes(ymin = lower, ymax = upper)) +
+  facet_grid(lad_model~phylogeny) +
+  
+  # geom_point() +
+  geom_pointrange(aes(ymin = lower, ymax = upper),
+                  alpha = 0.5, size = 0.2) +
+  scale_color_viridis_c(direction = -1) +
+  
+  geom_smooth(color = "salmon") +
   
   xlab("DBH (in cm)") +
   ylab("Total leaf area (in m2)") +
   
   theme_bw() +
-  theme(legend.position = "top",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5)) +
-  scale_color_viridis_c()
-
-
-# ------- Differences in LA -----
-data_output_tree %>% 
-  
-  ggplot(aes(y = diff_la_median, x = dbh_cm, color = batot_m2ha)) +
-  geom_pointrange(aes(ymin = diff_la_lower, ymax = diff_la_upper)) +
-  
-  xlab("DBH (in cm)") +
-  ylab("Difference in LA between control and predicted LAD") +
-  
-  theme_bw() +
   theme(legend.position = "right",
         plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5)) +
-  scale_color_viridis_c()
+        plot.subtitle = element_text(hjust = 0.5))
 ```
 
 
 ## Stand-level consequences on leaf area index LAI
 
 ```{r}
-# --------- Prediction of LAI --------
+# --------- Observe effect on LAI  --------
+data_output_stand %>% 
+  dplyr::select(site_name, batot_m2ha, 
+                contains("lai_model"), contains("lai_control")) %>% 
+  tidyr::pivot_longer(
+    !c(site_name, batot_m2ha),
+    names_pattern = "lai_(.*)_(.*)",
+    names_to = c("lad_model", "var"),
+    values_to = "lai_m2m2"
+  ) %>% 
+  tidyr::pivot_wider(
+    names_from = "var",
+    values_from = "lai_m2m2"
+  ) %>% 
+  
+  dplyr::left_join(data_compo %>% 
+                     dplyr::select(site_name, prop_angio), 
+                   by = "site_name") %>% 
+  dplyr::filter(lad_model == "model") %>% 
+  
+  ggplot(aes(y = median, x = prop_angio, color = batot_m2ha)) +
+  geom_pointrange(aes(ymin = lower, ymax = upper)) +
+  geom_smooth(method = "lm", formula = y~x) +
+  
+  xlab("Proportion of angiosperms") +
+  ylab("Stand leaf area index (in m2/m2)") +
+  
+  theme_bw() +
+  theme(legend.position = "right",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  scale_color_viridis_c(direction = -1)
+```
+
+
+## Stand-level comparison with control model
+
+```{r}
 data_output_stand %>% 
   dplyr::select(site_name, batot_m2ha, 
                 contains("lai_model"), contains("lai_control")) %>% 
@@ -1486,70 +544,7 @@ data_output_stand %>%
         plot.title = element_text(hjust = 0.5),
         plot.subtitle = element_text(hjust = 0.5)) 
 
-
-# ------- Differences in LAI -----
-data_output_stand %>% 
-  
-  ggplot(aes(y = diff_lai_median, x = batot_m2ha)) +
-  geom_pointrange(aes(ymin = diff_lai_lower, ymax = diff_lai_upper)) +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  
-  geom_smooth(method = "lm") +
-  
-  xlab("Total basal area (in m2/ha)") +
-  ylab("Difference in LAI between control and predicted LAD") +
-  
-  theme_bw() +
-  theme(legend.position = "right",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5))
-```
-
-## Consequences on light
-
-### Tree-level
-
-```{r}
-# --------- Prediction of intercepted energy --------
-data_output_light$trees %>% 
-  dplyr::left_join(data_output_tree %>% 
-                     dplyr::select(site = site_name, batot_m2ha,
-                                   species_calib,
-                                   id_tree, dbh_cm),
-                   by = c("site", "id_tree")) %>% 
-  dplyr::select(site, batot_m2ha, 
-                id_tree, dbh_cm, species_calib,
-                contains("lci_")) %>% 
-  tidyr::pivot_longer(
-    !c(site, batot_m2ha, id_tree, dbh_cm, species_calib),
-    names_pattern = "lci_(.*)_(.*)",
-    names_to = c("var", "lad_model"),
-    values_to = "lci"
-  ) %>% 
-  tidyr::pivot_wider(
-    names_from = "var",
-    values_from = "lci"
-  ) %>% 
-  
-  ggplot(aes(y = median, x = dbh_cm, color = batot_m2ha)) +
-  facet_wrap(~lad_model) +
-  geom_pointrange(aes(ymin = lower, ymax = upper)) +
-
-  scale_color_viridis_c() +
-  
-  xlab("Total basal area (in m2/ha)") +
-  ylab("Mean proportion of above canopy light PACL") +
-  
-  theme_bw() +
-  theme(legend.position = "top",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5)) 
-```
-
-### Stand-level
-
-```{r}
-data_output_light$stand %>% 
+data_output_light_stand %>% 
   dplyr::left_join(data_output_stand %>% 
                      dplyr::select(site = site_name, batot_m2ha),
                    by = "site") %>% 
@@ -1576,5 +571,317 @@ data_output_light$stand %>%
   theme_bw() +
   theme(legend.position = "top",
         plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5)) 
+        plot.subtitle = element_text(hjust = 0.5))
 ```
+
+
+
+
+# Appendix
+
+## Basal area vs. compo
+
+```{r}
+ggplot(data_compo, aes(y = batot_m2ha, x = prop_angio)) +
+  geom_point() +
+  theme_bw() +
+  xlab("Proprotion of angiosperms in BA") +
+  ylab("Stand basal area (in m2/ha)")
+```
+
+
+## Basal area vs. DBH
+
+```{r}
+ggplot(data_output_tree, aes(y = batot_m2ha, x = phylogeny)) +
+  geom_boxplot() +
+  theme_bw() +
+  xlab("Tree clade") +
+  ylab("Stand basal area (in m2/ha)")
+
+ggplot(data_output_tree, aes(y = dbh_cm, x = phylogeny)) +
+  geom_boxplot() +
+  theme_bw() +
+  xlab("Tree clade") +
+  ylab("Tree DBH (in cm)")
+
+ggplot(data_output_tree, aes(y = batot_m2ha, 
+                             x = species, color = species)) +
+  geom_boxplot() +
+  theme_bw() +
+  xlab("Tree species") +
+  ylab("Stand basal area (in m2/ha)")
+
+ggplot(data_output_tree, aes(y = dbh_cm, 
+                             x = species, color = species)) +
+  geom_boxplot() +
+  theme_bw() +
+  xlab("Tree species") +
+  ylab("Tree DBH (in cm)")
+
+ggplot(data_output_tree, aes(y = dbh_cm, x = batot_m2ha)) +
+  facet_wrap(~phylogeny) +
+  geom_point() +
+  theme_bw() +
+  xlab("Stand basal area (in m2/ha)") +
+  ylab("Tree DBH (in cm)")
+  
+ggplot(data_output_tree, aes(y = dbh_cm, x = batot_m2ha)) +
+  facet_wrap(~species) +
+  geom_point() +
+  theme_bw() +
+  xlab("Stand basal area (in m2/ha)") +
+  ylab("Tree DBH (in cm)")
+```
+
+
+## Crown allometries
+
+### Tree height
+
+```{r}
+coefs_height <- list("angiosperm" = NULL, "gymnosperm" = NULL)
+
+for (p in c("angiosperm", "gymnosperm")) {
+  
+  print(paste0("Fit for ", p, "..."))
+  
+  data_crown_tmp <- data_crown %>% 
+    dplyr::filter(phylogeny == p)
+  
+  mod_asympt_height <- h_m ~ 1.3 + b1 * (1-exp(-b2 * dbh_cm)) ^ b3
+  vars_rs_height <- data.frame(var = c("b1", "b2", "b3"), 
+                               start = c(quantile(data_crown_tmp$h_m, 
+                                                  probs = 0.97)*0.8, 0.07, 0.9))
+  
+  mod_height <- nls(mod_asympt_height,
+                    data = data_crown_tmp,
+                    start = setNames(as.list(vars_rs_height$start),
+                                     vars_rs_height$var),
+                    lower = c(0.0001, 0.0001, 0.0001), algorithm = "port",
+                    nls.control(maxiter = 1000, tol = 1e-1))
+
+  coefs_height[[p]] <- data.frame(as.list(coefficients(mod_height)))
+}
+
+coefs_height <- coefs_height %>% dplyr::bind_rows(.id = "phylogeny")
+coefs_height
+
+
+data_pred_height <- expand.grid(
+  dbh_cm = seq(
+    min(data_crown$dbh_cm), max(data_crown$dbh_cm),
+    length.out = 100
+  ),
+  phylogeny = c("angiosperm", "gymnosperm")
+) %>% 
+  
+  # Estimate mean crown radius
+  dplyr::left_join(coefs_height, by = "phylogeny") %>% 
+  dplyr::mutate(h_m = 1.3 + b1 * (1-exp(-b2 * dbh_cm)) ^ b3)
+```
+
+
+```{r}
+ggplot(data_crown, aes(y = h_m, x = dbh_cm)) +
+  facet_wrap(~phylogeny) +
+  
+  geom_point(mapping = aes(color = batot_m2ha),
+             alpha = 0.5) +
+  scale_color_viridis_c(direction = -1) +
+
+  geom_line(data = data_pred_height,
+            linewidth = 1.1) +
+  
+  theme_bw() +
+  xlab("Tree DBH (in cm)") +
+  ylab("Tree height (in m)")
+```
+
+
+### Crown base height
+
+```{r}
+ggplot(data_crown, aes(y = hbase_m, 
+                       x = dbh_cm, 
+                       color = batot_m2ha)) +
+  facet_wrap(~phylogeny) +
+  geom_point() +
+  
+  theme_bw() +
+  scale_color_viridis_c(direction = -1) +
+  xlab("Tree DBH (in cm)") +
+  ylab("Crown base height (in m)")
+```
+
+
+### Crown depth
+
+```{r}
+coefs_cdepth <- list("angiosperm" = NULL, "gymnosperm" = NULL)
+
+for (p in c("angiosperm", "gymnosperm")) {
+  
+  print(paste0("Fit for ", p, "..."))
+  
+  data_crown_tmp <- data_crown %>% 
+    dplyr::filter(phylogeny == p)
+  
+  init_par_cdepth <- coefficients(lm(log(cdepth_m) ~ log(dbh_cm), data_crown_tmp))
+
+  mod_cdepth <- nlme::gnls(
+    cdepth_m ~ (a1 + a3 * batot_m2ha) * (dbh_cm ^ a2),
+    data = data_crown_tmp,
+    params = list(a1 ~ 1, a2 ~ 1, a3 ~ 1),
+    start = c(a1 = exp(init_par_cdepth[1]), a2 = init_par_cdepth[2], a3 = 0),
+    control = gnlsControl(maxIter = 1000, tolerance = 0.1, nlsTol = 0.1)
+  )
+
+  coefs_cdepth[[p]] <- data.frame(as.list(coefficients(mod_cdepth)))
+}
+
+coefs_cdepth <- coefs_cdepth %>% dplyr::bind_rows(.id = "phylogeny")
+coefs_cdepth
+
+
+data_pred_cdepth <- expand.grid(
+  dbh_cm = seq(
+    min(data_crown$dbh_cm), max(data_crown$dbh_cm),
+    length.out = 100
+  ),
+  compet_intensity = c("low", "high"),
+  phylogeny = c("angiosperm", "gymnosperm")
+) %>% 
+  
+  # Set ref modalities for plot
+  dplyr::mutate(
+    batot_m2ha = ifelse(compet_intensity == "low",
+                        batot_m2ha_low,
+                        batot_m2ha_high)
+  ) %>% 
+  
+  # Estimate mean crown radius
+  dplyr::left_join(coefs_cdepth, by = "phylogeny") %>% 
+  dplyr::mutate(cdepth_m = (a1 + a3 * batot_m2ha) * (dbh_cm ^ a2))
+```
+
+```{r}
+ggplot(data_crown, aes(y = cdepth_m, x = dbh_cm)) +
+  facet_wrap(~phylogeny) +
+  
+  geom_point(mapping = aes(color = batot_m2ha),
+             alpha = 0.5) +
+  scale_color_viridis_c(direction = -1) +
+  ggnewscale::new_scale_color() +
+  
+  geom_line(data = data_pred_cdepth,
+            mapping = aes(color = compet_intensity),
+            linewidth = 1.1) +
+  scale_color_viridis_d() +
+  
+  theme_bw() +
+  xlab("Tree DBH (in cm)") +
+  ylab("Crown depth (in m)")
+```
+
+
+
+### Mean crown radius
+
+```{r}
+coefs_rmean <- list("angiosperm" = NULL, "gymnosperm" = NULL)
+
+for (p in c("angiosperm", "gymnosperm")) {
+  
+  print(paste0("Fit for ", p, "..."))
+  
+  data_crown_tmp <- data_crown %>% 
+    dplyr::filter(phylogeny == p)
+  
+  init_par_rmean <- coefficients(lm(log(rmean_m) ~ log(dbh_cm), data_crown_tmp))
+  
+  mod_no_compet <- nlme::gnls(
+    rmean_m ~ a1 * (dbh_cm ^ a2),
+    data = data_crown_tmp,
+    params = list(a1 ~ 1, a2 ~ 1),
+    start = c(a1 = exp(init_par_rmean[1]), a2 = init_par_rmean[2]),
+    control = gnlsControl(maxIter = 1000, tolerance = 0.1, nlsTol = 0.1)
+  )
+
+  mod_compet <- nlme::gnls(
+    rmean_m ~ (a1 + a3 * batot_m2ha) * (dbh_cm ^ a2),
+    data = data_crown_tmp,
+    params = list(a1 ~ 1, a2 ~ 1, a3 ~ 1),
+    start = c(a1 = exp(init_par_rmean[1]), a2 = init_par_rmean[2], a3 = 0),
+    control = gnlsControl(maxIter = 1000, tolerance = 0.1, nlsTol = 0.1)
+  )
+
+  print(anova(mod_no_compet, mod_compet))
+  
+  coefs_rmean[[p]] <- data.frame(as.list(coefficients(mod_compet)))
+}
+
+coefs_rmean <- coefs_rmean %>% dplyr::bind_rows(.id = "phylogeny")
+coefs_rmean
+
+
+data_pred_rmean <- expand.grid(
+  dbh_cm = seq(
+    min(data_crown$dbh_cm), max(data_crown$dbh_cm),
+    length.out = 100
+  ),
+  compet_intensity = c("low", "high"),
+  phylogeny = c("angiosperm", "gymnosperm")
+) %>% 
+  
+  # Set ref modalities for plot
+  dplyr::mutate(
+    batot_m2ha = ifelse(compet_intensity == "low",
+                        batot_m2ha_low,
+                        batot_m2ha_high)
+  ) %>% 
+  
+  # Estimate mean crown radius
+  dplyr::left_join(coefs_rmean, by = "phylogeny") %>% 
+  dplyr::mutate(rmean_m = (a1 + a3 * batot_m2ha) * (dbh_cm ^ a2))
+```
+
+
+```{r}
+ggplot(data_crown, aes(y = rmean_m, x = dbh_cm)) +
+  facet_wrap(~phylogeny) +
+  
+  geom_point(mapping = aes(color = batot_m2ha),
+             alpha = 0.5) +
+  scale_color_viridis_c(direction = -1) +
+  ggnewscale::new_scale_color() +
+  
+  geom_line(data = data_pred_rmean,
+            mapping = aes(color = compet_intensity),
+            linewidth = 1.1) +
+  scale_color_viridis_d() +
+  
+  theme_bw() +
+  xlab("Tree DBH (in cm)") +
+  ylab("Mean crown radius (in m)")
+```
+
+
+
+### Consequent crown volume
+
+```{r}
+ggplot(data_output_tree, aes(y = volume_m3, 
+                             x = dbh_cm, 
+                             color = batot_m2ha)) +
+  facet_wrap(~phylogeny) +
+  geom_point() +
+  geom_smooth(method = "gam") +
+  theme_bw() +
+  scale_color_viridis_c(direction = -1) +
+  xlab("Tree DBH (in cm)") +
+  ylab("Crown volume (in m)")
+```
+
+
+

@@ -106,7 +106,7 @@ list(
 
 
   ### Run the MCMC ----
-  tar_target(N_REPS, 3),
+  tar_target(N_REPS, 1),
   tar_target(reps, 1:N_REPS),
   
   tar_target(models_output_list, calibrate_models(models_setup,
@@ -137,50 +137,55 @@ list(
   # tar_target(models_evaluation, evaluate_models(models_summary_pointwise_list)),
 
 
+  ## Create parameters table ----
+  tar_target(output_params, get_output_params(models_output_list,
+                                              n_analysis = 5000)),
 
-
-
-  # SAVE OUTPUTS ----
-  # tar_target(models_output_fp, save_models(exp_design,
-  #                                          models_setup,
-  #                                          models_output_list,
-  #                                          models_summary_pointwise_list,
-  #                                          models_comparison,
-  #                                          models_evaluation,
-  #                                          "output/calib/",
-  #                                          "out_20260113_dbhXbatot_phylogeny.Rdata")),
+  ## Save output model ----
+  tar_target(output_models_fp, save_output_models(exp_design,
+                                                  models_setup,
+                                                  models_output_list,
+                                                  NULL, NULL, NULL,
+                                                  # models_summary_pointwise_list,
+                                                  # models_comparison,
+                                                  # models_evaluation,
+                                                  output_params,
+                                                  "output/calib/",
+                                                  "out_20260113_dbhXbatot_phylogeny.Rdata")),
 
 
   # COMPUTE OUTPUT VARIABLES ----
 
-  # Create parameters table ----
-  tar_target(output_params, get_output_params(models_output_list,
-                                              n_analysis = 5000)),
+  ## Compute tree-level variables ----
+  tar_target(data_output_tree, compute_output_tree(data_stands,
+                                                   models_setup,
+                                                   output_params,
+                                                   LAD_CONTROL)),
 
 
-  # ## Compute tree-level variables ---- 
-  # tar_target(data_output_tree, compute_output_tree(data_calib,
-  #                                                  models_setup,
-  #                                                  output_params,
-  #                                                  LAD_CONTROL)),
-  # 
-  # 
-  # ## Compute stand-level variables ---- 
-  # tar_target(data_output_stand, compute_output_stand(data_calib,
-  #                                                    models_setup,
-  #                                                    output_params,
-  #                                                    LAD_CONTROL)),
-  # 
-  # 
+  # ## Compute stand-level variables ----
+  tar_target(data_output_stand, compute_output_stand(data_stands,
+                                                     models_setup,
+                                                     output_params,
+                                                     LAD_CONTROL)),
+
+
   # ## Apply SamsaRalight on output stands ----
-  # tar_target(data_output_light_list, compute_output_light(data_calib,
-  #                                                         data_rad,
-  #                                                         init_db$plots,
-  #                                                         models_setup,
-  #                                                         output_params,
-  #                                                         LAD_CONTROL)),
-  # 
-  # tar_target(data_output_light, bind_output_light(data_output_light_list)),
+  tar_target(data_output_light_list, compute_output_light(data_stands, 
+                                                          data_rad,
+                                                          models_setup,
+                                                          output_params,
+                                                          LAD_CONTROL)),
+
+  tar_target(data_output_light, bind_output_light(data_output_light_list)),
+  
+  
+  ## Save output data ----
+  tar_target(output_data_fp, save_output_data(data_output_tree,
+                                              data_output_stand,
+                                              data_output_light,
+                                              "output/data/",
+                                              "outdata_20260113_dbhXbatot_phylogeny.Rdata")),
   
   NULL
 )
