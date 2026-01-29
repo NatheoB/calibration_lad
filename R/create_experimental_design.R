@@ -1,39 +1,39 @@
 create_experimental_design <- function() {
   
-  # Angiosperm and gymnosperm diameter/competition interactive effect----
-  # log(LAD) ~ DBH*BATOT + (1 | site/origin)
-  expand.grid(
+  # Angiosperm/gymnosperm diameter/competition interactive effect----
+  # log(LAD) ~ DBH*BATOT + group + (1 | species) + (1 | site/origin)
+  data.frame(
     
-    filter_sensors = TRUE, # filter sensors based on preliminary analysis (converged = TRUE)
+    # Filter sensors based on preliminary analysis (converged = TRUE)
+    filter_sensors        = TRUE, 
     
-    site_rd_effect = TRUE, # hierarchical site into origin random effect
-    origin_rd_effect = TRUE,
+    # Hierarchical site into origin random effect
+    site_rd_effect        = TRUE,
+    origin_rd_effect      = TRUE,
+
+    # Slope effects dbh (individual-level), batotal (site-level) and interaction
+    batot_site_effect     = TRUE,
+    dbh_effect            = TRUE,
+    dbh_interaction_batot = TRUE,
     
-    batot_site_effect = TRUE, # site effect of total basal area
-    dbh_effect = TRUE, # individual effect of diameter
+    # Species-pooling (intercept_sp_pooling is the same as a species random effect)
+    intercept_sp_pooling  = TRUE,
+    dbh_sp_pooling        = FALSE,
+    covariance_sp_pooling = FALSE,
     
-    group_variable = "phylogeny", # can also be "species" for example
-    intercept_per_group = TRUE,
-    dbh_per_group = TRUE,
-    
-    # OPTION 1: group pooling: covariance effect between intercept and dbh slope
-    # does not work with dbhXbatot interaction !!
-    intercept_group_pooling = FALSE,
-    dbh_group_pooling = FALSE,
-    consider_covariance = FALSE,
-    
-    # OPTION 2: consider interaction between batot and dbh
-    # does not work with group pooling, because it implies considering batot per group
-    batot_per_group = TRUE,
-    dbh_interaction_batot = TRUE
+    # Effect of functional group: angio/gymno (angiosperm is the reference group)
+    group_effect          = TRUE,
+    dbh_per_group         = FALSE,
+    batot_per_group       = FALSE,
+    interaction_per_group = FALSE
     
   ) %>% 
 
     dplyr::mutate(
       id_model = row_number(),
-      n_chains = 5,
-      n_iterations = 50000,
-      n_burning = 20000,
+      n_chains = 1,
+      n_iterations = 150000,
+      n_burning = 0,
       nCR = 3
     ) %>%
     dplyr::relocate(id_model, n_chains, n_iterations, n_burning, nCR)

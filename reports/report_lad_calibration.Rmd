@@ -163,37 +163,35 @@ The mean LAD over all sensors that converged was about `r round(mean(output_lad_
 50,000 iterations (20,000 burning), 5 chain, for BATOTxDBH model angio/gymno
 
 ```{r}
-load("output/calib/out_20260113_dbhXbatot_phylogeny.Rdata")
+load("output/calib/out_20260127_dbhXbatot_spRandom.Rdata")
 ```
 
 ```{r}
 data_trace <- output_models_list$output %>% 
   purrr::map(~.x$output) %>% 
-  setNames(output_models_list$output %>% purrr::map(~.x$id_model)) %>% 
+  setNames(output_models_list$output %>% 
+             purrr::map(~paste(.x$id_model, .x$i_rep, sep = "_")) %>% 
+             unlist()) %>% 
   purrr::map(~.x %>% 
-               purrr::map(~.x %>% 
-                            getSample(coda = TRUE) %>%
-                            purrr::map(~as.data.frame(.x) %>%
-                                         dplyr::mutate(iteration = row_number()) %>%
-                                         dplyr::relocate(iteration)) %>%
-                            dplyr::bind_rows(.id = "subchain")) %>%
-               dplyr::bind_rows(.id = "chain")
+               getSample(coda = TRUE) %>%
+               purrr::map(~as.data.frame(.x) %>%
+                            dplyr::mutate(iteration = row_number()) %>%
+                            dplyr::relocate(iteration)) %>%
+               dplyr::bind_rows(.id = "subchain")
   ) %>% 
   
-  dplyr::bind_rows(.id = "id_model") %>% 
+  dplyr::bind_rows(.id = "id_simu") %>% 
+  tidyr::separate(id_simu, c("id_model", "chain"), remove = F) %>% 
   
   # Called the non species-specific model a mean species 
-  dplyr::select(id_model, chain, subchain, iteration,
-                sigma_log, sigma_site_log, sigma_origin_log,
-                intercept.angiosperm, intercept.gymnosperm,
-                dbh.angiosperm, dbh.gymnosperm,
-                batot.angiosperm, batot.gymnosperm,
-                dbhXbatot.angiosperm, dbhXbatot.gymnosperm) %>% 
-  tidyr::pivot_longer(!c(id_model, chain, subchain, iteration),
+  dplyr::select(id_simu, id_model, chain, subchain, iteration,
+                sigma_log, sigma_intercept_log,
+                sigma_site_log, sigma_origin_log,
+                contains("intercept"), contains("dbh"),
+                contains("batot"), contains("dbhXbatot")) %>% 
+  tidyr::pivot_longer(!c(id_simu, id_model, chain, subchain, iteration),
                       names_to = "parameter",
-                      values_to = "estimate") %>% 
-  
-  dplyr::filter(id_model == 1)
+                      values_to = "estimate")
 ```
 
 
@@ -202,48 +200,28 @@ data_trace <- output_models_list$output %>%
 ```{r}
 data_trace %>% 
   
-  dplyr::filter(parameter %in% c("sigma_log", "sigma_site_log", "sigma_origin_log")) %>% 
+  dplyr::filter(parameter %in% c("sigma_log", "sigma_intercept_log",
+                                 "sigma_site_log", "sigma_origin_log")) %>% 
   
   ggplot(aes(y = estimate, x = iteration, 
              color = chain, linetype = subchain)) +
   facet_wrap(~parameter, scales = "free", ncol = 2) +
   geom_line() +
   
-  labs(title = "Convergence of the sigma parameters",
-       subtitle = "batot*dbh for angiosperms and gymnosperms") +
+  labs(title = "Convergence of the sigma parameters") +
   
   theme_bw() +
   theme(plot.title = element_text(hjust = 0.5),
         plot.subtitle = element_text(hjust = 0.5))
 ```
 
-## Model for angiosperm
-
-```{r}
-data_trace %>% 
-  
-  dplyr::filter(grepl("angiosperm", parameter)) %>% 
-  
-  ggplot(aes(y = estimate, x = iteration, 
-             color = chain, linetype = subchain)) +
-  facet_wrap(~parameter, scales = "free") +
-  geom_line() +
-  
-  geom_hline(yintercept = 0) +
-  
-  labs(title = "Convergence of the parameters for angiosperms") +
-  
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5))
-```
    
-## Model for gymnosperm
+## Predictor parameters
 
 ```{r}
 data_trace %>% 
   
-  dplyr::filter(grepl("gymnosperm", parameter)) %>% 
+  dplyr::filter(parameter %in% c("mean_intercept", "dbh", "batot", "dbhXbatot")) %>% 
   
   ggplot(aes(y = estimate, x = iteration, 
              color = chain, linetype = subchain)) +
@@ -252,7 +230,7 @@ data_trace %>%
   
   geom_hline(yintercept = 0) +
   
-  labs(title = "Convergence of the parameters for gymnosperms") +
+  labs(title = "Convergence of predictor parameters") +
   
   theme_bw() +
   theme(plot.title = element_text(hjust = 0.5),
@@ -322,10 +300,11 @@ tidyr::crossing(
     sigma_mod = exp(sigma_log),
     sigma_site = exp(sigma_site_log),
     sigma_origin = exp(sigma_origin_log),
+    sigma_intercept = exp(sigma_intercept_log),
     
     # Compute variance (do not forget that we fit a log_normal LAD, 
     # thus consider variance term when back transforming)
-    variance_sum = sigma_mod^2 + sigma_site^2 + sigma_origin^2,
+    variance_sum = sigma_mod^2 + sigma_site^2 + sigma_origin^2 + sigma_intercept^2,
     
     # Restandardize predictors
     dbh_std = (dbh_cm - output_models_list$setup[[1]]$dbh_mean) /
@@ -336,28 +315,15 @@ tidyr::crossing(
   ) %>% 
   
   dplyr::mutate(
-    lad_angiosperm = exp(intercept.angiosperm + 
-                           dbh_std * dbh.angiosperm + 
-                           batot_std * batot.angiosperm +
-                           dbh_std * batot_std * dbhXbatot.angiosperm + 
-                           0.5*variance_sum),
-    
-    lad_gymnosperm = exp(intercept.gymnosperm + 
-                           dbh_std * dbh.gymnosperm + 
-                           batot_std * batot.gymnosperm +
-                           dbh_std * batot_std * dbhXbatot.gymnosperm + 
-                           0.5*variance_sum)
-  ) %>% 
-  
-  tidyr::pivot_longer(
-    c(lad_gymnosperm, lad_angiosperm),
-    values_to = "lad",
-    names_to = "phylogeny",
-    names_prefix = "lad_"
+    lad = exp(mean_intercept + 
+                dbh_std * dbh + 
+                batot_std * batot +
+                dbh_std * batot_std * dbhXbatot + 
+                0.5*variance_sum)
   ) %>% 
   
   # Compute summary statistics
-  dplyr::group_by(dbh_cm, compet_intensity, phylogeny) %>% 
+  dplyr::group_by(rep, dbh_cm, compet_intensity) %>% 
   dplyr::summarise(
     lad_median = median(lad),
     lad_lower = quantile(lad, 0.025),
@@ -365,7 +331,7 @@ tidyr::crossing(
   ) %>% 
   
   ggplot(aes(y = lad_median, x = dbh_cm, color = compet_intensity)) +
-  facet_wrap(~phylogeny) +
+  facet_wrap(~rep) +
   
   geom_line() +
   geom_ribbon(aes(ymin = lad_lower, ymax = lad_upper,
@@ -382,10 +348,8 @@ tidyr::crossing(
   theme(legend.position = "top",
         plot.title = element_text(hjust = 0.5),
         plot.subtitle = element_text(hjust = 0.5)) +
-  scale_color_viridis_d() +
-  scale_fill_viridis_d()
-  # scale_color_manual(values = c("low" = "olivedrab", "high" = "darkgreen")) +
-  # scale_fill_manual(values = c("low" = "olivedrab", "high" = "darkgreen"))
+  scale_color_manual(values = c("low" = "olivedrab", "high" = "darkgreen")) +
+  scale_fill_manual(values = c("low" = "olivedrab", "high" = "darkgreen"))
 ```
 
 

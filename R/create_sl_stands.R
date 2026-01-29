@@ -24,7 +24,7 @@ create_sl_stands <- function(init_db,
       dplyr::mutate(crown_type = "8E") %>% 
       dplyr::select(id_tree = Id, 
                     species_in_inv = Essence_Latin,
-                    phylogeny = sp_phylogeny,
+                    functional_group,
                     species = sp_calib,
                     x = X, y = Y, dbh_cm = Dbh,
                     crown_type, h_m = H, hbase_m = CBH, hmax_m = CMRH,
@@ -65,7 +65,7 @@ create_sl_stands <- function(init_db,
       north2x = tmp_plot_info$northToX,
       sensors = tmp_sensors,
       core_polygon_df = tmp_plot_extent,
-      use_rect_zone = ifelse(is.null(tmp_plot_extent), TRUE, FALSE), # Only if no given core polygon
+      aarect_zone = tmp_plot_info$aarect_zone, # for all except cloture (circular plots)
       fill_around = TRUE
     )
     

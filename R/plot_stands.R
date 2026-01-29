@@ -28,7 +28,7 @@ plot_stands <- function(sl_stands,
     
     
     # Plot stand map
-    message(paste("SamsaRaLight stand map of", site))
+    message("SamsaRaLight stand map")
     
     png(file.path(output_plots_fp,
                   paste0(site, "_map_sl.png")), 
@@ -44,7 +44,7 @@ plot_stands <- function(sl_stands,
     
     
     # Plot stand top-down
-    message(paste("Top-down SamsaRaLight stand of", site))
+    message("Top-down SamsaRaLight stand")
     
     png(file.path(output_plots_fp,
                   paste0(site, "_topdown_sl.png")), 
@@ -60,39 +60,22 @@ plot_stands <- function(sl_stands,
     dev.off()
     
     
+    ## Plot inventory map
+    message("Inventory map")
+    
     # Change species name for plotting inventoried species
-    tmp_stand$trees <- tmp_stand$trees %>%
+    tmp_stand$inventory <- tmp_stand$inventory %>%
       dplyr::mutate(species = species_in_inv)
     
     
-    ## Plot inventory map
-    message(paste("Inventory map of", site))
-    
     png(file.path(output_plots_fp,
-                  paste0(site, "_map_inv.png")), 
+                  paste0(site, "_inv.png")), 
         width = 600, height = 600)
     
     print(
-      plot(tmp_stand, only_inv = TRUE) + 
+      plot_inventory(tmp_stand$inventory) + 
         ggplot2::scale_fill_manual(values = tmp_colors_inv) +
         ggplot2::labs(title = paste("Inventory map of", site))
-    )
-    
-    dev.off()
-    
-    
-    ## Plot top-down map
-    message(paste("Top-down inventory of", site))
-    
-    png(file.path(output_plots_fp,
-                  paste0(site, "_topdown_inv.png")), 
-        width = 600, height = 400)
-    
-    print(
-      plot(tmp_stand, top_down = TRUE, only_inv = TRUE) + 
-        ggplot2::scale_color_manual(values = tmp_colors_inv) +
-        ggplot2::labs(title = paste("Top-down inventory of", site)) +
-        ggplot2::theme(plot.title = element_text(hjust = 0.5))
     )
     
     dev.off()
