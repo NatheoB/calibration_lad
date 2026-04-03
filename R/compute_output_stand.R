@@ -39,7 +39,8 @@ compute_output_stand <- function(data_stands,
       # Volume of the assymetric crown
       volume_m3 = v_upper + v_lower
     ) %>% 
-    dplyr::select(site_name, id_tree, phylogeny, species, batot_m2ha, dbh_cm, volume_m3)
+    dplyr::select(site_name, id_tree, functional_group, 
+                  species, batot_m2ha, dbh_cm, volume_m3)
   
   
   # For each model
@@ -65,30 +66,29 @@ compute_output_stand <- function(data_stands,
           dplyr::mutate(
             
             # Exponentiate sigmas
-            sigma_mod = exp(sigma_log),
-            sigma_site = exp(sigma_site_log),
-            sigma_origin = exp(sigma_origin_log),
+            sigma_mod = exp(p_sigma_mod_log),
+            sigma_intercept_sp = exp(p_sigma_intercept_sp_log),
+            sigma_site = exp(p_sigma_site_log),
+            sigma_origin = exp(p_sigma_origin_log),
             
             # Compute variance (do not forget that we fit a log_normal LAD, thus consider variance term when back transforming)
-            variance_sum = sigma_mod^2 + sigma_site^2 + sigma_origin^2,
+            variance_sum = sigma_mod^2 + sigma_intercept_sp^2 + sigma_site^2 + sigma_origin^2,
+            
+            # Gymnosperm effect
+            is_gymno = functional_group=="gymnosperm",
             
             # Restandardize predictors
             dbh_std = (dbh_cm - models_setup[[id_model]]$dbh_mean) / models_setup[[id_model]]$dbh_sd,
             batot_std = (batot_m2ha - models_setup[[id_model]]$batot_mean) / models_setup[[id_model]]$batot_sd,
             
           ) %>% 
-          
-          tidyr::pivot_longer(contains(c("intercept.", "dbh.", "batot.", "dbhxbatot.")),
-                              names_pattern = "(.*)\\.(.*)",
-                              names_to = c(".value", "phylogeny_params")) %>% 
-          
-          dplyr::filter(phylogeny_params != phylogeny) %>% 
-          
+        
           dplyr::mutate(
-            lad_m2m3_model = exp(intercept + 
-                                   dbh_std * dbh + 
-                                   batot_std * batot +
-                                   dbh_std * batot_std * dbhXbatot + 
+            lad_m2m3_model = exp(p_intercept_meansp + 
+                                   p_intercept_gymno * is_gymno + 
+                                   (p_dbh + p_dbh_gymno * is_gymno) * dbh_std + 
+                                   (p_batot + p_batot_gymno * is_gymno) * batot_std +
+                                   (p_dbhXbatot + p_dbhXbatot_gymno * is_gymno) * dbh_std * batot_std + 
                                    0.5*variance_sum),
             
             la_m2_model = volume_m3 * lad_m2m3_model,

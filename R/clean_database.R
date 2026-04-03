@@ -104,45 +104,72 @@ clean_database <- function(init_db_raw) {
     sp_calib = names(sp_to_calib),
     species_in_inv = sp_to_calib
   ) %>%
-    tidyr::unnest(species_in_inv)
+    tidyr::unnest(species_in_inv) %>% 
+    
+    dplyr::mutate(
+      
+      leaf_group = 
+        case_match(sp_calib,
+                   c(
+                     "Fagus_sylvatica", # 4.56 (0.11)
+                     "Quercus_sp", # petraea: 2.73 (0.27) and robur 2.45 (0.28)
+                     "Carpinus_betulus", # 3.97 (0.12)
+                     "Sorbus_sp", # aucuparia: 2.73 (0.21) and torminalis 3.38 (0.2)
+                     "Populus_sp", # x canadensis: 1.67 (0.33) and tremula 2.22 (0.07)
+                     "Betula_sp", # pendula: 2.03 (0.09) and pubescens 1.85 (0.07)
+                     "other_angio" # Malus domestica: 1.93, crataegus laevigata: 2.45 (0.28), castanea sativa: 3.15 (0.23)
+                   
+                     ) ~ "broad",
+                   
+                   c(
+                     "Picea_abies", # 4.45 (0.5)
+                     "Pseudotsuga_menziesii", # 2.78 (0.18)
+                     "Pinus_sylvestris", # 1.67 (0.33)
+                     "Abies_alba", # 4.6 (0.06)
+                     "Larix_decidua", # 1.46 (0.29)
+                     "other_gymno"
+                   
+                     ) ~ "needle"
+        ),
+      
+      shadetol_group = 
+        case_match(sp_calib,
+                   c(
+                     # Angiosperms
+                     "Fagus_sylvatica",
+                     "Carpinus_betulus",
+                     
+                     # Gymnosperms
+                     "Picea_abies",
+                     "Abies_alba"
+                     
+                   ) ~ "high",
+                   
+                   c(
+                     # Angiosperms
+                     "Quercus_sp",
+                     "Sorbus_sp",
+                     "Populus_sp",
+                     "Betula_sp",
+                     "other_angio",
+                     
+                     # Gymnosperms
+                     "Pseudotsuga_menziesii",
+                     "Pinus_sylvestris",
+                     "Larix_decidua",
+                     "other_gymno"
+                     
+                   ) ~ "low"
+        ),
+      
+      species_group = paste(leaf_group, shadetol_group, sep="_")
+    )
   
-  sp_gymno <- c(
-    "Picea_abies", 
-    "Pseudotsuga_menziesii", 
-    "Pinus_sylvestris",         
-    "Abies_alba",
-    "Larix_decidua", 
-    "Autre_resineux"
-  )
-  
-  sp_angio <- c(
-    "Fagus_sylvatica", 
-    "Quercus_sp",
-    "Quercus_petraea",
-    "Carpinus_betulus", 
-    "Sorbus_sp", 
-    "Sorbus_aucuparia", 
-    "Sorbus_torminalis", 
-    "Populus_x_canadensis",
-    "Populus_tremula", 
-    "Betula_sp", 
-    "Autre_feuillu",
-    "Malus_sp",
-    "Crataegus_sp", 
-    "Castanea_sativa"
-  )
-  
-  
+
   init_db_raw$species <- init_db_raw$species %>% 
     purrr::map(~.x %>% 
                  dplyr::left_join(
                    sp_to_calib_df, by = c("Essence_Latin" = "species_in_inv")
-                 ) %>% 
-                 dplyr::mutate(
-                   functional_group = case_when(
-                     Essence_Latin %in% sp_gymno ~ "gymnosperm",
-                     Essence_Latin %in% sp_angio ~ "angiosperm"
-                   )
                  )
     )
   

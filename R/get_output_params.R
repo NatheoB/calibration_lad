@@ -1,7 +1,8 @@
 get_output_params <- function(models_output_list,
-                              n_analysis) {
+                              n_burning,
+                              n_samples_per_chain) {
   
-  tmp_out <- models_output_list %>%
+  models_output_list %>%
     
     # Group list elements by models id 
     split(purrr::map_chr(., ~as.character(.x$id_model))) %>% 
@@ -11,9 +12,18 @@ get_output_params <- function(models_output_list,
       
       outs$outputs %>%
         
-        BayesianTools::getSample(coda = FALSE,
-                                 numSamples = n_analysis) %>% 
+        # Get all output parameters
+        BayesianTools::getSample(coda = FALSE) %>% 
         as.data.frame() %>% 
+        
+        # Random sample considering burning
+        dplyr::filter(row_number() > n_burning) %>% 
+        dplyr::sample_n(n_samples_per_chain) %>% 
+        
+        # Rename parameters
+        dplyr::rename_all(~paste0("p_", .)) %>% 
+        
+        # Set unique id to paremeters
         dplyr::mutate(rep = outs$i_rep, 
                       id_params = row_number(),
                       id_set = paste(rep, id_params, sep = "_")) %>% 

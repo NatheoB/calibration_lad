@@ -1,4 +1,5 @@
 create_sl_stands <- function(init_db,
+                             data_rad,
                              cell_size,
                              seed) {
   
@@ -24,7 +25,8 @@ create_sl_stands <- function(init_db,
       dplyr::mutate(crown_type = "8E") %>% 
       dplyr::select(id_tree = Id, 
                     species_in_inv = Essence_Latin,
-                    functional_group,
+                    species_group,
+                    leaf_group, shadetol_group,
                     species = sp_calib,
                     x = X, y = Y, dbh_cm = Dbh,
                     crown_type, h_m = H, hbase_m = CBH, hmax_m = CMRH,
@@ -65,15 +67,22 @@ create_sl_stands <- function(init_db,
       north2x = tmp_plot_info$northToX,
       sensors = tmp_sensors,
       core_polygon_df = tmp_plot_extent,
-      aarect_zone = tmp_plot_info$aarect_zone, # for all except cloture (circular plots)
+      modify_polygon = ifelse(is.null(tmp_plot_extent), "rect", "none"),
       fill_around = TRUE
     )
+
+    # Compute tree volume
+    tmp_stand$trees <- compute_volume_trees(tmp_stand$trees)
     
-    # Compute competition variables
+    # Compute basal area competition variables
     tmp_stand$trees <- compute_competition_trees(tmp_stand$trees,
                                                  tmp_stand$transform$new_area_ha)
     
+    # Compute ray competition index RCI
+    tmp_stand$trees <- compute_rci_trees(tmp_stand,
+                                         data_rad[[site]])
     
+  
     # Add the virtual plot to the list
     out_stands[[site]] <- tmp_stand
   }

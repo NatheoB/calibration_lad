@@ -86,28 +86,24 @@ compute_output_light <- function(data_stands,
         tmp_output_light <- data_stands %>% 
           purrr::map2(names(data_stands), function(sl_stand, site_name) {
             
-            # Get param set 
-            tmp_params <- out_model[out_model$id_set == ids_set[i],] %>% 
-              tidyr::pivot_longer(contains(c("intercept.", "dbh.", "batot.", "dbhXbatot.")),
-                                  names_pattern = "(.*)\\.(.*)",
-                                  names_to = c(".value", "phylogeny")) %>% 
-              dplyr::rename_with(~paste0("p_", .), all_of(c("intercept", "dbh", "batot", "dbhXbatot")))
-            
-            
             # Get the trees and set all trees to the control LAD
             sl_stand$trees <- sl_stand$trees %>% 
               
-              dplyr::left_join(tmp_params, by = "phylogeny") %>% 
+              dplyr::bind_cols(out_model[out_model$id_set == ids_set[i],]) %>% 
               
               dplyr::mutate(
                 
                 # Exponentiate sigmas
-                sigma_mod = exp(sigma_log),
-                sigma_site = exp(sigma_site_log),
-                sigma_origin = exp(sigma_origin_log),
+                sigma_mod = exp(p_sigma_mod_log),
+                sigma_intercept_sp = exp(p_sigma_intercept_sp_log),
+                sigma_site = exp(p_sigma_site_log),
+                sigma_origin = exp(p_sigma_origin_log),
                 
                 # Compute variance (do not forget that we fit a log_normal LAD, thus consider variance term when back transforming)
-                variance_sum = sigma_mod^2 + sigma_site^2 + sigma_origin^2,
+                variance_sum = sigma_mod^2 + sigma_intercept_sp^2 + sigma_site^2 + sigma_origin^2,
+                
+                # Gymnosperm effect
+                is_gymno = functional_group=="gymnosperm",
                 
                 # Restandardize predictors
                 dbh_std = (dbh_cm - models_setup[[id_model]]$dbh_mean) / models_setup[[id_model]]$dbh_sd,
@@ -116,10 +112,11 @@ compute_output_light <- function(data_stands,
               ) %>% 
               
               dplyr::mutate(
-                crown_lad = exp(p_intercept + 
-                                  dbh_std * p_dbh + 
-                                  batot_std * p_batot +
-                                  dbh_std * batot_std * p_dbhXbatot + 
+                crown_lad = exp(p_intercept_meansp + 
+                                  p_intercept_gymno * is_gymno + 
+                                  (p_dbh + p_dbh_gymno * is_gymno) * dbh_std + 
+                                  (p_batot + p_batot_gymno * is_gymno) * batot_std +
+                                  (p_dbhXbatot + p_dbhXbatot_gymno * is_gymno) * dbh_std * batot_std + 
                                   0.5*variance_sum)
               )
             
@@ -127,8 +124,6 @@ compute_output_light <- function(data_stands,
             tmp_sl_out <- SamsaRaLight::run_sl(sl_stand, 
                                                data_rad[[site_name]],
                                                sensors_only = FALSE,
-                                               turbid_medium = TRUE,
-                                               use_torus = TRUE,
                                                detailed_output = FALSE,
                                                parallel_mode = TRUE,
                                                n_threads = NULL,

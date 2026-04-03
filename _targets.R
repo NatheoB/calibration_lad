@@ -5,7 +5,7 @@ library(future)
 library(future.callr)
 plan(callr)
 
-# Install SmasaraLight
+# Install SamsaraLight
 # install.packages("SamsaRaLight_1.0.tar.gz",
 #                  repos = NULL, type = "source")
 
@@ -15,8 +15,9 @@ lapply(grep("R$", list.files("R", recursive = TRUE), value = TRUE),
 
 
 # Set options (i.e. clustermq.scheduler for multiprocess computing)
-options(tidyverse.quiet = TRUE, clustermq.scheduler = "multiprocess")
-
+options(tidyverse.quiet = TRUE,
+        dplyr.summarise.inform = FALSE,
+        clustermq.scheduler = "multiprocess")
 
 tar_option_set(packages = c("dplyr", "tidyr", "data.table", 
                             "vroom", "purrr", 
@@ -33,8 +34,12 @@ list(
   
   tar_target(LAD_CONTROL, 0.5),
   
-  tar_target(N_PARALLEL_REPS, 5),
   tar_target(N_SL_THREADS, 8),
+  
+  tar_target(N_REPS, 1),
+  tar_target(N_ITERATIONS_PER_REP, 2000),
+  tar_target(N_BURNING_PER_REP, 1500),
+  tar_target(N_SAMPLES_PER_REP, 100),
   
   
   # PREPARE CALIBRATION ----
@@ -57,9 +62,11 @@ list(
   
   ## Create SamsaRaLight stands from tree inventories ----
   tar_target(data_stands, create_sl_stands(init_db,
+                                           data_rad,
                                            cell_size = 5,
                                            seed = SEED)),
 
+  
   ## Plot the calibration data ----
   tar_target(plots_stands_fp, plot_stands(data_stands,
                                           data_species = init_db$species,
@@ -69,7 +76,6 @@ list(
   
   # PRELIMINARY ANALYSIS ----
   # simple minimization of residuals
-
   tar_target(lads_method1, seq(0.01, 5, by = 0.01)),
   tar_target(lad_convergence_threshold, 3),
 
@@ -94,7 +100,7 @@ list(
   # BAYESIAN CALIBRATION ----
 
   ## Create the experimental design ----
-  tar_target(exp_design, create_experimental_design()),
+  tar_target(exp_design, create_experimental_design(N_ITERATIONS_PER_REP)),
   tar_target(id_models, exp_design$id_model),
 
 
@@ -109,7 +115,7 @@ list(
 
 
   ## Run the MCMC ----
-  tar_target(reps, 1:N_PARALLEL_REPS),
+  tar_target(reps, 1:N_REPS),
   
   tar_target(models_output_list, calibrate_models(models_setup,
                                                   id_model = id_models,
@@ -124,65 +130,77 @@ list(
                                                   models_setup,
                                                   models_output_list,
                                                   "output/calib/",
-                                                  "out_20260201_dbhXbatot_spRandom_gymno.Rdata")),
+                                                  "outmods_20260402_5mods.Rdata")),
   
 
 
-  ## Compare and evaluate the models ----
+  # COMPARE MODELS ----
 
   ### Compute pointwise likelihoods ----
-  # tar_target(models_summary_pointwise_list, get_summary_pointwise_models(models_setup,
-  #                                                                        models_output_list,
-  #                                                                        logs_folder = "logs/pointwise"),
-  #            pattern = map(models_output_list),
-  #            iteration = "list"),
+  tar_target(models_summary_pointwise_list, get_summary_pointwise_models(models_setup,
+                                                                         models_output_list,
+                                                                         N_BURNING_PER_REP,
+                                                                         logs_folder = "logs/pointwise"),
+             pattern = map(models_output_list),
+             iteration = "list"),
 
 
 
   ### Compare models with LOO-CV and WAIC ----
-  # tar_target(models_comparison, compare_models(models_summary_pointwise_list)),
+  tar_target(models_comparison, compare_models(models_summary_pointwise_list)),
 
 
   ### Evaluate models with RMSE ----
-  # tar_target(models_evaluation, evaluate_models(models_summary_pointwise_list)),
+  tar_target(models_evaluation, evaluate_models(models_summary_pointwise_list)),
 
+  
+  ### Save model comparison ----
+  tar_target(output_comparison_fp, save_output_comparison(models_summary_pointwise_list,
+                                                          models_comparison,
+                                                          models_evaluation,
+                                                          "output/comparison/",
+                                                          "outcomp_20260402_5mods.Rdata")),
+  
 
-  # # COMPUTE OUTPUT VARIABLES ----
+  # COMPUTE OUTPUT VARIABLES ----
 
   ## Create parameters table ----
-  # tar_target(output_params, get_output_params(models_output_list,
-  #                                             n_analysis = 100)),
-  
-  # ## Compute tree-level variables ----
+  tar_target(output_params, get_output_params(models_output_list,
+                                              n_burning = N_BURNING_PER_REP,
+                                              n_samples_per_chain = N_SAMPLES_PER_REP)),
+
+  ## Compute tree-level variables ----
   # tar_target(data_output_tree, compute_output_tree(data_stands,
   #                                                  models_setup,
   #                                                  output_params,
   #                                                  LAD_CONTROL)),
   # 
-  # 
-  # # ## Compute stand-level variables ----
+
+  # ## Compute stand-level variables ----
   # tar_target(data_output_stand, compute_output_stand(data_stands,
   #                                                    models_setup,
   #                                                    output_params,
   #                                                    LAD_CONTROL)),
-  # 
-  # 
-  # # ## Apply SamsaRalight on output stands ----
-  # tar_target(data_output_light_list, compute_output_light(data_stands, 
+
+
+  ## Apply SamsaRalight on output stands ----
+  # tar_target(data_output_light_list, compute_output_light(data_stands,
   #                                                         data_rad,
   #                                                         models_setup,
   #                                                         output_params,
   #                                                         LAD_CONTROL)),
   # 
   # tar_target(data_output_light, bind_output_light(data_output_light_list)),
-  # 
-  # 
-  # ## Save output data ----
-  # tar_target(output_data_fp, save_output_data(data_output_tree,
-  #                                             data_output_stand,
-  #                                             data_output_light,
-  #                                             "output/data/",
-  #                                             "outdata_20260113_dbhXbatot_phylogeny.Rdata")),
+
+
+  ## Save output data ----
+  tar_target(output_analysis_fp, save_output_analysis(output_params,
+                                                      # data_output_tree,
+                                                      # data_output_stand,
+                                                      # data_output_light,
+                                                      NULL, NULL, NULL,
+                                                      "output/analysis/",
+                                                      "outanalysis_20260402_5mods.Rdata")),
   
   NULL
 )

@@ -1,12 +1,13 @@
 get_summary_pointwise_models <- function(models_setup,
                                          model_output,
+                                         n_burning_per_rep,
                                          logs_folder) {
   
-  get_summary_pointwise_model <- function(output) {
+  get_summary_pointwise_model <- function(output, n_burning_per_rep) {
     
     # Get samples of the chains of the model (bind the chains samplings with coda argument)
     samples <- BayesianTools::getSample(output, coda = F)
-    samples <- samples[(nrow(samples)-mod_design$n_analysis+1):nrow(samples),]
+    samples <- samples[(nrow(samples)-n_burning_per_rep):nrow(samples),]
     
     # Get the number of observation (i.e. total number of sesnors over all the sites)
     n_sensors <- nrow(data_stands %>% 
@@ -40,7 +41,7 @@ get_summary_pointwise_models <- function(models_setup,
   
   # Get model infos ----
   id_model <- model_output$id_model
-  i_chain <- model_output$i_chain
+  i_rep <- model_output$i_rep
   
   
   
@@ -51,7 +52,7 @@ get_summary_pointwise_models <- function(models_setup,
   
   # Unique log file per worker that close at the end of the function
   log_file <- sprintf(file.path(logs_folder,"pointwise-mod%s-chain%i-worker%s-%s.log"), 
-                      id_model, i_chain, 
+                      id_model, i_rep, 
                       Sys.getpid(), Sys.Date())
   
   
@@ -81,7 +82,7 @@ get_summary_pointwise_models <- function(models_setup,
   
   # Compute the residuals of all the last samples of each model ----
   ## Storing errors, warnings and messages
-  log_write("----- Computing residuals and pointwise log-likelihood of model", id_model, "/ chain", i_chain, "-----\n\n\n")
+  log_write("----- Computing residuals and pointwise log-likelihood of model", id_model, "/ chain", i_rep, "-----\n\n\n")
   
   result <- tryCatch(
     {
@@ -94,11 +95,11 @@ get_summary_pointwise_models <- function(models_setup,
         environment(get_summary_pointwise_model) <- models_setup[[id_model]]
         
         ## Get the model residuals and pointwise log-likelihood matrices
-        out <- get_summary_pointwise_model(model_output$outputs)
+        out <- get_summary_pointwise_model(model_output$outputs, n_burning_per_rep)
         
         ## Add model IDs to output
         out$id_model <- id_model
-        out$i_chain <- i_chain
+        out$i_rep <- i_rep
         
         log_write("\n\nFinished computing\n\n")
         
@@ -116,11 +117,11 @@ get_summary_pointwise_models <- function(models_setup,
     error = function(e) {
       log_write("[ERROR]", conditionMessage(e))
       # Return a safe placeholder (e.g., NA or empty list)
-      list(failed = TRUE, params = params, result = NA)
+      list(failed = TRUE, result = NA)
     }
   )
   
-  log_write("\n\n----- Finished model", id_model, "/ chain", i_chain, "-----")
+  log_write("\n\n----- Finished model", id_model, "/ chain", i_rep, "-----")
   
   
   # Return the list of models' summary matrices ----

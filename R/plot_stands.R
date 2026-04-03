@@ -1,15 +1,15 @@
-plot_stands <- function(sl_stands,
+plot_stands <- function(data_stands,
                         data_species,
                         output_plots_fp) {
   
   
   # Create the plots of each stand  
-  for (site in names(sl_stands)) {
+  for (site in names(data_stands)) {
     
     message("---- Plotting SamsaRaLight stand for ", site, "...")
     
     # Get the stand
-    tmp_stand <- sl_stands[[site]]
+    tmp_stand <- data_stands[[site]]
     
     
     # Set colors
@@ -35,9 +35,8 @@ plot_stands <- function(sl_stands,
         width = 600, height = 600)
     
     print(
-      plot(tmp_stand) + 
-        ggplot2::scale_fill_manual(values = tmp_colors_stand) +
-        ggplot2::labs(title = paste("SamsaRaLight stand map of", site))
+      plot(tmp_stand) & 
+        scale_fill_manual(values = tmp_colors_stand)
     )
     
     dev.off()
@@ -51,10 +50,8 @@ plot_stands <- function(sl_stands,
         width = 600, height = 400)
     
     print(
-      plot(tmp_stand, top_down = TRUE) + 
-        ggplot2::scale_color_manual(values = tmp_colors_stand) +
-        ggplot2::labs(title = paste("Top-down SamsaRaLight stand of", site)) +
-        ggplot2::theme(plot.title = element_text(hjust = 0.5))
+      plot(tmp_stand, top_down = TRUE) & 
+        scale_color_manual(values = tmp_colors_stand)
     )
     
     dev.off()
@@ -74,8 +71,9 @@ plot_stands <- function(sl_stands,
     
     print(
       plot_inventory(tmp_stand$inventory) + 
-        ggplot2::scale_fill_manual(values = tmp_colors_inv) +
-        ggplot2::labs(title = paste("Inventory map of", site))
+        scale_fill_manual(values = tmp_colors_inv) +
+        labs(title = paste("Inventory map of", site)) +
+        theme(plot.title = element_text(hjust = 0.5))
     )
     
     dev.off()

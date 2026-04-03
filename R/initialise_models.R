@@ -50,8 +50,8 @@ initialise_model <- function(mod_design,
                                lad_random_per_sites,
                                lad_intercept_per_sp,
                                lad_dbh_per_sp,
-                               lad_batot_per_sp,
-                               lad_dbhXbatot_per_sp
+                               lad_compet_per_sp,
+                               lad_dbhXcompet_per_sp
                                ) {
     
     # Species-specific parameters ----
@@ -62,8 +62,8 @@ initialise_model <- function(mod_design,
       species = species2calib,
       intercept = lad_intercept_per_sp,
       beta_dbh = lad_dbh_per_sp,
-      beta_batot = lad_batot_per_sp,
-      beta_dbhxbatot = lad_dbhXbatot_per_sp
+      beta_compet = lad_compet_per_sp,
+      beta_dbhxcompet = lad_dbhXcompet_per_sp
     )
 
     
@@ -82,8 +82,8 @@ initialise_model <- function(mod_design,
         eta = random_site + 
           intercept + 
           beta_dbh * dbhstd + 
-          beta_batot * batotstd + 
-          beta_dbhxbatot * dbhstd * batotstd,
+          beta_compet * competstd + 
+          beta_dbhxcompet * dbhstd * competstd,
         crown_lad = exp(eta)
       )
     
@@ -93,8 +93,6 @@ initialise_model <- function(mod_design,
       tmp_stand, 
       data_rad[[site]],
       sensors_only = TRUE,
-      turbid_medium = TRUE,
-      use_torus = TRUE,
       detailed_output = FALSE,
       parallel_mode = TRUE,
       n_threads = n_threads,
@@ -112,8 +110,8 @@ initialise_model <- function(mod_design,
                                      lad_random_per_sites,
                                      lad_intercept_per_sp,
                                      lad_dbh_per_sp,
-                                     lad_batot_per_sp,
-                                     lad_dbhXbatot_per_sp,
+                                     lad_compet_per_sp,
+                                     lad_dbhXcompet_per_sp,
                                      print.pb) {
 
     
@@ -139,8 +137,8 @@ initialise_model <- function(mod_design,
         lad_random_per_sites,
         lad_intercept_per_sp,
         lad_dbh_per_sp,
-        lad_batot_per_sp,
-        lad_dbhXbatot_per_sp
+        lad_compet_per_sp,
+        lad_dbhXcompet_per_sp
       )
       
       # Compute PACL residuals the sensors ----
@@ -201,28 +199,18 @@ initialise_model <- function(mod_design,
       p_sigma_site <- 0
     }
     
-    ## 1.4. Intercept effect ----
-    ## Hyperparameter SD for intercept 
-    if (mod_design$intercept_sp_pooling) {
-      p_sigma_intercept <- p[i_param]
+    ## 1.4. Species random effect ----
+    if (mod_design$species_rd_effect) {
+      p_sigma_sp <- p[i_param]
       i_param <- i_param + 1
     } else {
-      p_sigma_intercept <- 0
-    }
-    
-    ## 1.5. Dbh effect ----
-    ## Hyperparameter SD for dbh effect
-    if (mod_design$dbh_sp_pooling) {
-      p_sigma_dbh <- p[i_param]
-      i_param <- i_param + 1
-    } else {
-      p_sigma_dbh <- 0
+      p_sigma_sp <- 0
     }
     
     
-    # 2. Site/origin hierarchical random effects ----
+    # 2. Latent variables for random effects ----
     
-    ## 2.1. Origin latent variables ----
+    ## 2.1. Origins ----
     if (mod_design$origin_rd_effect) {
       p_z_origins <- p[i_param + (1:n_origins) - 1]
       i_param <- i_param + n_origins
@@ -230,138 +218,108 @@ initialise_model <- function(mod_design,
       p_z_origins <- rep(0, n_origins)
     }
     
-    ## 2.2. Site latent variables ----
+    ## 2.2. Sites ----
     if (mod_design$site_rd_effect) {
       p_z_sites <- p[i_param + (1:n_sites) - 1]
       i_param <- i_param + n_sites
     } else {
       p_z_sites <- rep(0, n_sites)
     }
-  
+    
+    ## 2.3. Species ----
+    if (mod_design$species_rd_effect) {
+      p_z_species <- p[i_param + (1:n_species) - 1]
+      i_param <- i_param + n_species
+    } else {
+      p_z_species <- rep(0, n_species)
+    }
     
     
     # 3. Predictors effect ----
     
     ## 3.1. Intercept ----
-    
-    # Mean species intercept
-    p_intercept <- p[i_param]
-    i_param <- i_param + 1 
-    
-    # Species pooling latent variable for intercept
-    if (mod_design$intercept_sp_pooling) {
+    if (!is.na(mod_design$grouping_var)) {
       
-      p_z_intercept_sp <- p[i_param + (1:n_species) - 1]
-      i_param <- i_param + n_species
+      p_intercept_groups <- p[i_param + (1:n_groups) - 1]
+      i_param <- i_param + n_groups
+      
     } else {
-      p_z_intercept_sp <- rep(0, n_species)
-    }
-    
-    # Intercept for gymnosperms
-    if (mod_design$group_effect) {
       
-      p_intercept_gymno <- p[i_param]
+      p_intercept_groups <- p[i_param]
       i_param <- i_param + 1
-    } else {
-      p_intercept_gymno <- 0 
     }
+    
     
     
     
     ## 3.2. DBH effect ----
     if (mod_design$dbh_effect) {
       
-      # Mean species dbh
-      p_dbh <- p[i_param]
-      i_param <- i_param + 1 
-      
-      # Species pooling latent variables for dbh
-      if (mod_design$dbh_sp_pooling) {
+      if (!is.na(mod_design$grouping_var) & mod_design$dbh_per_group) {
         
-        p_z_dbh_sp <- p[i_param + (1:n_species) - 1]
-        i_param <- i_param + n_species
+        p_dbh_groups <- p[i_param + (1:n_groups) - 1]
+        i_param <- i_param + n_groups
+        
       } else {
-        p_z_dbh_sp <- rep(0, n_species)
-      }
-      
-      # DBH effect for gymnosperms
-      if (mod_design$dbh_per_group) {
         
-        p_dbh_gymno <- p[i_param]
+        p_dbh_groups <- p[i_param]
         i_param <- i_param + 1
-      } else {
-        p_dbh_gymno <- 0 
       }
+      
       
     } else {
       
       # Otherwise, no dbh effect
-      p_dbh <- 0
-      p_z_dbh_sp <- rep(0, n_species) 
-      p_dbh_gymno <- rep(0, n_species)
+      p_dbh_groups <- rep(0, times = n_groups)
     }
     
     
     
-    ## 3.3. Covariance between intercept/slope ----
-    if (mod_design$covariance_sp_pooling) {
+    ## 3.3. Competition effect ----
+    if (mod_design$compet_effect) {
       
-      # Rho parameter (correlation factor)
-      p_rho_raw <- p[i_param]
-      i_param <- i_param + 1
-      
-    } else {
-      
-      p_rho_raw <- 0
-    }
-    
-    
-    ## 3.4. Within-site effect of total basal area ----
-    if (mod_design$batot_site_effect) {
-      
-      # Mean species batot effect
-      p_batot <- p[i_param]
-      i_param <- i_param + 1 
-      
-      # BATOT effect for gymnosperms
-      if (mod_design$batot_per_group) {
+      if (!is.na(mod_design$grouping_var) & mod_design$compet_per_group) {
         
-        p_batot_gymno <- p[i_param]
-        i_param <- i_param + 1
+        p_compet_groups <- p[i_param + (1:n_groups) - 1]
+        i_param <- i_param + n_groups
+        
       } else {
-        p_batot_gymno <- 0 
+        
+        p_compet_groups <- p[i_param]
+        i_param <- i_param + 1
       }
       
+      
     } else {
       
-      # Otherwise, no dbh effect
-      p_batot <- 0
-      p_batot_gymno <- rep(0, n_species)
+      # Otherwise, no compet effect
+      p_compet_groups <- rep(0, times = n_groups)
     }
     
     
     
-    ## 3.5. BATOTxDBH interaction ----
-    if (mod_design$dbh_interaction_batot) {
+    
+    ## 3.4. COMPETxDBH interaction ----
+    if (mod_design$dbh_interaction_compet) {
       
-      # Mean species batot effect
-      p_dbhXbatot <- p[i_param]
-      i_param <- i_param + 1 
-      
-      # BATOT effect for gymnosperms
-      if (mod_design$interaction_per_group) {
+      if (!is.na(mod_design$grouping_var) & mod_design$interaction_per_group) {
         
-        p_dbhXbatot_gymno <- p[i_param]
-        i_param <- i_param + 1
+        p_dbhXcompet_groups <- p[i_param + (1:n_groups) - 1]
+        i_param <- i_param + n_groups
+        
+        p_dbhXcompet <- 0
+        
       } else {
-        p_dbhXbatot_gymno <- 0 
+        
+        p_dbhXcompet_groups <- p[i_param]
+        i_param <- i_param + 1
       }
+      
       
     } else {
       
-      # Otherwise, no dbh effect
-      p_dbhXbatot <- 0
-      p_dbhXbatot_gymno <- rep(0, n_species)
+      # Otherwise, no dbhXcompet effect
+      p_dbhXcompet_groups <- rep(0, times = n_groups)
     }
     
     
@@ -377,29 +335,15 @@ initialise_model <- function(mod_design,
       "z_random_per_origin" = p_z_origins,
       "z_random_per_site" = p_z_sites,
       
-      # Intercept
-      "intercept" = p_intercept,
-      "z_intercept_species" = p_z_intercept_sp,
-      "sigma_intercept_species_log" = p_sigma_intercept,
-      "intercept_gymno" = p_intercept_gymno,
+      # Species random effect
+      "sigma_sp_log" = p_sigma_sp,
+      "z_random_per_sp" = p_z_species,
       
-      # DBH
-      "dbh" = p_dbh,
-      "z_dbh_species" = p_z_dbh_sp,
-      "sigma_dbh_species_log" = p_sigma_dbh,
-      "dbh_gymno" = p_dbh_gymno,
-      
-      # Correlation parameter for MVN
-      "rho_raw" = p_rho_raw,
-      
-      # BATOT
-      "batot" = p_batot,
-      "batot_gymno" = p_batot_gymno,
-      
-      # Interaction BATOTxDBH
-      "dbhXbatot" = p_dbhXbatot,
-      "dbhXbatot_gymno" = p_dbhXbatot_gymno
-      
+      # Intercept and slope effects
+      "intercept_per_group" = p_intercept_groups,
+      "dbh_per_group" = p_dbh_groups,
+      "compet_per_group" = p_compet_groups,
+      "dbhXcompet_per_group" = p_dbhXcompet_groups
       
     ))
   }
@@ -420,7 +364,7 @@ initialise_model <- function(mod_design,
     
     
     
-    # 2. Compute the hierarchical random effects ----
+    # 2. Compute the hierarchical site/origin random effects ----
     # non-centered parameterization
     # And within-site effetc of total basal area
     
@@ -438,39 +382,21 @@ initialise_model <- function(mod_design,
     p_random_per_site <- mean_origins_per_site + p_sigma_site * p_list$z_random_per_site  # z_site ~ N(0,1)
     
     
-    # 3. Compute species-pooling intercept and dbh effects with MVN ----
+    # 3. Compute species random effect ----
     
-    ## 3.1. Transform back the correlation factor ----
-    # Here, fit an unconstrained rho and apply a transformation to ensure -1 < rho < 1
-    # ensure rho constrains with a better MCMC mixing and stability
-    # plogis(x) in ]0,1[, 2*plogis(x) in ]0,2[ and 2*plogis(x) - 1 in ]-1,1[
-    rho <- 2*plogis(p_list$rho_raw) - 1 
+    ## 3.1. Unlog sigma parameters ----
+    p_sigma_sp <- exp(p_list$sigma_sp_log)
     
-    
-    ## 3.2. Transform back the SDs ----
-    # To ensure SD positivity without constrained, by fitting in an infinite range
-    sigma_intercept <- exp(p_list$sigma_intercept_species_log)
-    sigma_dbh <- exp(p_list$sigma_dbh_species_log)
+    ## 3.2. Compute species random effect ----
+    p_random_per_sp <- p_sigma_sp * p_list$z_random_per_sp  # z_sp ~ N(0,1)
     
     
-    ## 3.3. Compute the species parameters alpha and beta ----
-    # Here, z_alpha/z_beta is a vector of latent variables for each group modalities
-    # Be careful, it is well ordered to respect the group modalities order
-    # z_alpha and z_beta ~ N(0,1)
-    # If MVN, we compute SIGMA with the Cholesky factor L (SIGMA = L.t(L))
-    p_intercept_per_sp <- p_list$intercept + sigma_intercept * p_list$z_intercept_species
-    
-    sqrt1mr2 <- sqrt(1 - rho^2) # Intermediate variables to faster the computation time
-    p_dbh_per_sp <- p_list$dbh + sigma_dbh * (rho * p_list$z_intercept_species + sqrt1mr2 * p_list$z_dbh_species)
-    
-    
-    # 4. Add the effect of functional group for each species ----
-    # Add the effect only for gymnoseprm species (angiosperm is the reference group)
-    p_intercept_per_sp <- p_intercept_per_sp + is_species_gymno * p_list$intercept_gymno
-    p_dbh_per_sp <- p_dbh_per_sp + is_species_gymno * p_list$dbh_gymno
-    p_batot_per_sp <- rep(p_list$batot, times = n_species) + is_species_gymno * p_list$batot_gymno
-    p_dbhXbatot_per_sp <- rep(p_list$dbhXbatot, times = n_species) + is_species_gymno * p_list$dbhXbatot_gymno
-    
+    # 4. Get the group-specific intercept and slope effects for each species ----
+    p_intercept_per_sp <- p_list$intercept_per_group[id_group_per_species]
+    p_dbh_per_sp <- p_list$dbh_per_group[id_group_per_species]
+    p_compet_per_sp <- p_list$compet_per_group[id_group_per_species]
+    p_dbhXcompet_per_sp <- p_list$dbhXcompet_per_group[id_group_per_species]
+
     
     # 5. Compute the residuals with the given lad parameters ----
     # (difference between estimated/observed PACL for each sensor)
@@ -481,8 +407,8 @@ initialise_model <- function(mod_design,
                                      p_random_per_site,
                                      p_intercept_per_sp,
                                      p_dbh_per_sp,
-                                     p_batot_per_sp,
-                                     p_dbhXbatot_per_sp,
+                                     p_compet_per_sp,
+                                     p_dbhXcompet_per_sp,
                                      print.pb)
     residuals <- out_sl$residuals
     
@@ -740,7 +666,7 @@ initialise_model <- function(mod_design,
   
   ## Standardized variables ----
   
-  ### DBH (per trees) ----
+  ### DBH ----
   dbh_vect <- data_stands %>% 
     purrr::map(~.x$trees$dbh_cm) %>% 
     purrr::reduce(c)
@@ -756,20 +682,37 @@ initialise_model <- function(mod_design,
     })
   
   
-  ### BATOT (per site) ----
-  batot_vect <- data_stands %>% 
-    purrr::map(~unique(.x$trees$batot_m2ha)) %>% 
-    purrr::reduce(c)
+  ### COMPET ----
   
-  batot_mean <- mean(batot_vect)
-  batot_sd <- sd(batot_vect)
+  # If specified compet effect and variable
+  if (mod_design$compet_effect & !is.na(mod_design$compet_var)) {
   
-  data_stands <- data_stands %>% 
-    purrr::map(~{
-      .x$trees <- .x$trees %>% 
-        dplyr::mutate(batotstd = (batot_m2ha - batot_mean) / batot_sd)
-      .x
-    })
+    compet_vect <- data_stands %>% 
+      purrr::map(~.x$trees[,mod_design$compet_var]) %>% 
+      purrr::reduce(c)
+    
+    compet_mean <- mean(compet_vect)
+    compet_sd <- sd(compet_vect)
+    
+    data_stands <- data_stands %>% 
+      purrr::map(~{
+        .x$trees <- .x$trees %>% 
+          dplyr::mutate(competstd := ( (!!sym(mod_design$compet_var) - compet_mean) / compet_sd) )
+        .x
+      })
+  
+  } else {
+    
+    # Otherwise, set it to 0 
+    
+    data_stands <- data_stands %>% 
+      purrr::map(~{
+        .x$trees <- .x$trees %>% 
+          dplyr::mutate(competstd = 0)
+        .x
+      })
+    
+  }
   
   
   ## Global variables ----
@@ -795,20 +738,34 @@ initialise_model <- function(mod_design,
   n_species <- length(species2calib)
   
   
-  ### Fonctional group effect ----
-  group_per_species <- data_stands %>%
-    purrr::map(~.x$trees %>% 
-                 dplyr::select(species, functional_group) %>% 
-                 dplyr::distinct()) %>% 
-    dplyr::bind_rows() %>% 
-    dplyr::distinct() %>% 
-    # Order species with the same order as the species vector
-    dplyr::mutate(species = factor(species, levels = species2calib)) %>% 
-    dplyr::arrange() %>% 
-    dplyr::pull(functional_group)
+  ### Group effect ----
+  group_per_species <- NULL
+  groups2calib <- NULL
   
-  is_species_gymno <- group_per_species == "gymnosperm"
+  id_group_per_species <- rep(1, times = n_species)
+  n_groups <- 1
   
+  if (!is.na(mod_design$grouping_var)) {
+    
+    group_per_species <- data_stands %>%
+      
+      # Get the grouping variable modality per species
+      purrr::map(~.x$trees %>% 
+                   dplyr::select(species, group = !!sym(mod_design$grouping_var)) %>% 
+                   dplyr::distinct()) %>% 
+      dplyr::bind_rows() %>% 
+      dplyr::distinct() %>% 
+      
+      # Order species with the same order as the species vector
+      dplyr::mutate(species = factor(species, levels = species2calib)) %>%
+      dplyr::arrange() %>%
+      dplyr::pull(group)
+
+    groups2calib <- unique(group_per_species)
+    id_group_per_species <- match(group_per_species, groups2calib)
+    n_groups <- length(groups2calib)
+  }
+
   
   ## Define parameters and priors ----
   # HALFCAUCHY PRIORS MUST BE THE FIRST ONES (typically for modelling SD)
@@ -834,8 +791,8 @@ initialise_model <- function(mod_design,
   
   #### Model residuals ----
   par_normal <- c(par_normal, "sigma_mod_log")
-  prior_normal_mean <- c(prior_normal_mean, log(0.05))
-  prior_normal_sd <- c(prior_normal_sd, 0.1)
+  prior_normal_mean <- c(prior_normal_mean, log(0.3))
+  prior_normal_sd <- c(prior_normal_sd, 0.3)
   
   
   #### Origin random effect ----
@@ -854,202 +811,136 @@ initialise_model <- function(mod_design,
   }
   
   
-  #### Intercept species partial pooling ----
-  if (mod_design$intercept_sp_pooling) {
-    par_normal <- c(par_normal, "sigma_intercept_sp_log")
-    prior_normal_mean <- c(prior_normal_mean, log(0.3))
-    prior_normal_sd <- c(prior_normal_sd, 0.3)
-  }
-  
-  #### Dbh effect species partial pooling ----
-  if (mod_design$dbh_sp_pooling) {
-    par_normal <- c(par_normal, "sigma_dbh_sp_log")
+  #### Species random effect ----
+  if (mod_design$species_rd_effect) {
+    par_normal <- c(par_normal, "sigma_sp_log")
     prior_normal_mean <- c(prior_normal_mean, log(0.3))
     prior_normal_sd <- c(prior_normal_sd, 0.3)
   }
   
   
-  ### Hierarchical site/origin random effect ----
+  ### Latent variables for random effect ----
   # Non-centered parameterization with latent variables N(0,1)
   # To increase computation time and favour mixing
   
-  #### Origin latent variables ----
+  #### Origins ----
   if (mod_design$origin_rd_effect) {
     par_normal <- c(par_normal, paste0("z_origin.", origin_names))
     prior_normal_mean <- c(prior_normal_mean, rep(0, times=n_origins))
     prior_normal_sd <- c(prior_normal_sd, rep(1, times=n_origins))
   }
   
-  #### Site latent variables ----
+  #### Sites ----
   if (mod_design$site_rd_effect) {
     par_normal <- c(par_normal, paste0("z_site.", site_names))
     prior_normal_mean <- c(prior_normal_mean, rep(0, times=n_sites))
     prior_normal_sd <- c(prior_normal_sd, rep(1, times=n_sites))
   }
-  
-  
-  ### Mean species LAD intercept ----
-  # Here, we estimate the log(LAD), to ensure for LAD positivity
 
-  if (prior_lad <= 0) stop("prior lad is lower or equal to 0")
-  prior_lad_log <- log(prior_lad)
   
-
-  #### Mean species intercept ----
-  par_normal <- c(par_normal, "intercept")
-  prior_normal_mean <- c(prior_normal_mean, prior_lad_log)
-  prior_normal_sd <- c(prior_normal_sd, 0.5)
-  
-  
-  #### Species-pooling ----
-  # Model the species-specific intercept within a normal distribution
-  # centered around the mean species intercept intercept with a sd parameter sigma_intercept
-  # the sigma paramter sigma_intercept has been defined previously
-  # Same as modelling an intercept with species as random effect
-  if (mod_design$intercept_sp_pooling) {
-    
-    # Latent variables (for species pooling)
-    # To increase computation time and favour mixing: use a non-centered parametrization
-    # Get the group intercept with alpha_s = mean + sigma * z_s (with z in N(0,1))
-    par_normal <- c(par_normal, paste0("intercept_z_sp.", species2calib))
+  #### Species ----
+  if (mod_design$species_rd_effect) {
+    par_normal <- c(par_normal, paste0("z_sp.", species2calib))
     prior_normal_mean <- c(prior_normal_mean, rep(0, times=n_species))
     prior_normal_sd <- c(prior_normal_sd, rep(1, times=n_species))
-    
-  } 
+  }
   
   
-  #### Functional group intercept effect ----  
-  # Intercept change compared to the ref group (ref is angiosperm)
-  # Normal distribution centered around 0
-  if (mod_design$group_effect) {
+  ### Intercept effect ----
+  if (prior_lad <= 0) stop("prior lad is lower or equal to 0")
+  prior_lad_log <- log(prior_lad)   # Here, we estimate the log(LAD), to ensure for LAD positivity
+  
+  if (!is.na(mod_design$grouping_var)) {
     
-    par_normal <- c(par_normal, "intercept_gymno")
-    prior_normal_mean <- c(prior_normal_mean, 0)
+    # For each group
+    par_normal <- c(par_normal, paste0("intercept.", groups2calib))
+    prior_normal_mean <- c(prior_normal_mean, rep(prior_lad_log, times = length(groups2calib)))
+    prior_normal_sd <- c(prior_normal_sd, rep(0.5, times = length(groups2calib)))
+    
+  } else {
+    
+    # Mean species
+    par_normal <- c(par_normal, "intercept")
+    prior_normal_mean <- c(prior_normal_mean, prior_lad_log)
     prior_normal_sd <- c(prior_normal_sd, 0.5)
-    
-  } # Otherwise, no group effect
+  }
   
   
   
   ### DBH effect ----
   # BE CAREFUL : DBH in this model is standardized
-  # LAD = intercept at DBHstd = 0 <=> DBH = mean(dataset)
   if (mod_design$dbh_effect) {
     
-    # Cannot have dbh species pooling with group-specific slope on dbh
-    if (mod_design$dbh_per_group & mod_design$dbh_sp_pooling) {
-      stop("DEBUG: cannot have dbh species pooling with group-specific slope on dbh")
-    }
-    
-    ### Single slope for all species ----
-    par_normal <- c(par_normal, "dbh")
-    prior_normal_mean <- c(prior_normal_mean, 0)
-    prior_normal_sd <- c(prior_normal_sd, 0.5)
-    
-    
-    #### Species pooling ----
-    # Model the species-specific dbh effect within a normal distribution
-    # centered around a mean dbh with a sd parameter sigma_dbh_sp
-    # the sigma paramter sigma_dbh_sp has been defined previously
-    if (mod_design$dbh_sp_pooling) {
+    if (!is.na(mod_design$grouping_var) & mod_design$dbh_per_group) {
       
-      # Latent variables (for species pooling)
-      # To increase computation time and favour mixing: use a non-centered parametrization
-      # Get the group dbh effect with alpha_s = mean + sigma * z_s (with z in N(0,1))
-      par_normal <- c(par_normal, paste0("dbh_z_sp.", groups2calib))
-      prior_normal_mean <- c(prior_normal_mean, rep(0, times=n_groups))
-      prior_normal_sd <- c(prior_normal_sd, rep(1, times=n_groups))
+      # For each group
+      par_normal <- c(par_normal, paste0("dbh.", groups2calib))
+      prior_normal_mean <- c(prior_normal_mean, rep(0, times = length(groups2calib)))
+      prior_normal_sd <- c(prior_normal_sd, rep(0.5, times = length(groups2calib)))
       
-    } 
-    
-    ### Group-specific slope ----
-    # Slope change compared to the ref group (ref is angiosperm)
-    # Normal distribution centered around 0
-    if (mod_design$dbh_per_group) {
+    } else {
       
-      par_normal <- c(par_normal, "dbh_gymno")
+      # Mean species
+      par_normal <- c(par_normal, "dbh")
       prior_normal_mean <- c(prior_normal_mean, 0)
       prior_normal_sd <- c(prior_normal_sd, 0.5)
-      
     }
     
   } # Otherwise, no dbh effect
   
   
-  ### Covariance intercept/dbh when species pooling ----
-  if (mod_design$covariance_sp_pooling) {
-    
-    # Send error if cannot model covariance 
-    if (!mod_design$intercept_sp_pooling | 
-        !mod_design$dbh_sp_pooling) {
-      stop("DEBUG: to model the variance-covariance matrix, you need to consider a partial pooling species-specific intercept and dbh")
-    }
-    
-    # Add rho parameter (correlation factor)
-    # Here we model rho_raw which is back transformed into rho with rho = 2*plogis(rho_raw) - 1
-    # Easier to mix for MCMC because unconstrained parameter, whereas -1 < rho < 1
-    # And transformation transform rho from ]-Inf, +Inf[ to ]-1, 1[
-    par_normal <- c(par_normal, "rho_raw")
-    prior_normal_mean <- c(prior_normal_mean, 0)
-    prior_normal_sd <- c(prior_normal_sd, 1) 
-  }
   
-  
-  
-  ### BATOT effect ----
-  if (mod_design$batot_site_effect) {
+  ### COMPET effect ----
+  # BE CAREFUL : COMPET variable in this model is standardized
+  if (mod_design$compet_effect) {
     
-    #### Single slope for all species ----
-    par_normal <- c(par_normal, "batot")
-    prior_normal_mean <- c(prior_normal_mean, 0)
-    prior_normal_sd <- c(prior_normal_sd, 0.5)
-    
-    #### Group-specific slope ----
-    # (ref is angiosperm)
-    if (mod_design$batot_per_group) {
+    if (!is.na(mod_design$grouping_var) & mod_design$compet_per_group) {
       
-      par_normal <- c(par_normal, "batot_gymno")
+      # For each group
+      par_normal <- c(par_normal, paste0("compet.", groups2calib))
+      prior_normal_mean <- c(prior_normal_mean, rep(0, times = length(groups2calib)))
+      prior_normal_sd <- c(prior_normal_sd, rep(0.5, times = length(groups2calib)))
+      
+    } else {
+      
+      # Mean species
+      par_normal <- c(par_normal, "compet")
       prior_normal_mean <- c(prior_normal_mean, 0)
       prior_normal_sd <- c(prior_normal_sd, 0.5)
-      
     }
     
-  } # Otherwise, no batot effect
+  } # Otherwise, no compet effect
   
   
-  ### Interaction BATOT x DBH ----
-  if (mod_design$dbh_interaction_batot) {
+  ### Interaction COMPET x DBH ----
+  if (mod_design$dbh_interaction_compet) {
     
-    # Send error if interaction is set to true with dbh species pooling also activated
-    if (mod_design$dbh_sp_pooling) {
-      stop("DEBUG: DBH:BATOT does not work with dbh species pooling")
-    }
-    
-    # Send error if batot or dbh effect are not activated
+    # Send error if compet or dbh effect are not activated
     if (!mod_design$dbh_effect |
-        !mod_design$batot_site_effect) {
-      stop("DEBUG: include both batot and dbh effect to consider interaction DBH:BATOT")
+        !mod_design$compet_effect) {
+      stop("DEBUG: include both compet and dbh effect to consider interaction DBH:COMPET")
     }
     
-    # Send error if batot or dbh effect are not considered equally (global or per group)
-    if (mod_design$dbh_per_group != mod_design$batot_per_group) {
-      stop("DEBUG: dbh and batot per group must be considered the same manner to consider batot:dbh interaction")
+    # Send error if compet or dbh effect are not considered equally (global or per group)
+    if (mod_design$dbh_per_group != mod_design$compet_per_group) {
+      stop("DEBUG: dbh and compet per group must be considered the same manner to consider compet:dbh interaction")
     }
     
-    #### Single slope for all species ----
-    par_normal <- c(par_normal, "dbhXbatot")
-    prior_normal_mean <- c(prior_normal_mean, 0)
-    prior_normal_sd <- c(prior_normal_sd, 0.5)
-    
-    #### Group-specific slope ----
-    # (ref is angiosperm)
-    if (mod_design$interaction_per_group) {
+    if (!is.na(mod_design$grouping_var) & mod_design$interaction_per_group) {
       
-      par_normal <- c(par_normal, "dbhXbatot_gymno")
+      # For each group
+      par_normal <- c(par_normal, paste0("dbhXcompet.", groups2calib))
+      prior_normal_mean <- c(prior_normal_mean, rep(0, times = length(groups2calib)))
+      prior_normal_sd <- c(prior_normal_sd, rep(0.5, times = length(groups2calib)))
+      
+    } else {
+      
+      # Mean species
+      par_normal <- c(par_normal, "dbhXcompet")
       prior_normal_mean <- c(prior_normal_mean, 0)
       prior_normal_sd <- c(prior_normal_sd, 0.5)
-      
     }
+    
   }
   
   

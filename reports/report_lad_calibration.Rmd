@@ -23,6 +23,7 @@ library(tidyr)
 
 library(ggplot2)
 library(cowplot)
+library(patchwork)
 library(ggforce)
 library(legendry)
 library(grid)
@@ -32,6 +33,7 @@ library(ggnewscale)
 library(BayesianTools)
 library(coda)
 library(nlme)
+library(lme4)
 ```
 
 # Motivation of the study
@@ -51,6 +53,84 @@ In this study, we used a model inversion methodology, using the ray-tracing mode
 The aim of the calibration is to find a tree-level LAD model that minimize the error between $PACL_{obs}$ and $PACL_{est}$. To do so, we defined the LAD for a tree $i$, of species $s$ in a plot $p$ as $LAD_{i,s,p} = a_{0,s} + a_{0,p} + a_{1,s}.DBH_i + a_{2,s}.BAH_i + \epsilon$, where $a_{0,s}$ is a species-specific intercept, $a_{0,p}$ is a random hierarchical site effect, nested within an origin effect (4 origins of the plots within UCLouvain, INRAe, Cloture and IRRES), $DBH_i$ is the diameter at breast height of tree $i$ , with the associated estimated species-specific coefficient $a_{1,s}$, $BAH_i$ the competition index of the tree $i$ (*i.e.* the sum of basal area of trees higher than the tree $i$), with the associated estimated species-specific coefficient $a_{2,s}$, and $\epsilon$ the normal error term. We used a Bayesian approach to estimate the posterior distribution of parameters that minimize the log-likelihood between observed and simulated PACL. As computation of $PACL_{est}$ needs an external call of SamsaraLight model, we used the R package 'BayesianTools' to run a MCMC sampling of parameters with the "DREAMzs" sampling algorithm.
 
 For this study, we used the SamsaraLight model with the R package SamsaraLight (Beauchamp et al., work in progress, intended for publication in the Journal of Open Source Software). The SamsaraLight model was initially developed in Java and included in the Capsis simulation platform (SamsaraLightLoader by Gauthier Ligot). It could be called from R software via the "RCapsis" R package (Fortin et al., 2021). To speed up calculation times and make SamsaraLight easier to use in an R environment, we created the "SamsaraLight" R package. The source code is written in C++ to enable fast calculations and communication with the R environment is handled by the Rcpp package (Eddelbuettel & Balamuta, 2018). The "SamsaRaLight" R package reduces calculation time compared to the previous method (the RCapsis R package calling the Java model SamsaRaLightLoader) as it does not require the creation of a Java server nor Java objects. It also facilitates the use of SamsaraLight within R, as it does not require the creation of an inventory file, instead using R objects and functions directly. The package is functional and stored in a GitHub repository, but it is still subject to private restrictions as discussions regarding co-authorship and the intellectual property rights of the source code need to be concluded.
+
+
+# Initial plots
+
+```{r}
+tar_load(init_db)
+tar_load(data_stands)
+tar_load(LAD_CONTROL)
+
+data_init <- data_stands %>% 
+  purrr::map(~.x$trees) %>% 
+  dplyr::bind_rows(.id = "site_name") %>%
+  dplyr::mutate(
+    rmean_m = (rn_m + rs_m + re_m + rw_m) / 4,
+    cdepth_m = h_m - hbase_m,
+    functional_group = ifelse(leaf_group == "needle", "gymnosperm", "angiosperm")
+  )
+
+data_compo <- data_init %>%
+  dplyr::group_by(site_name, batot_m2ha) %>%
+  dplyr::summarise(G_angio = sum( (leaf_group == "broad") * G_ha ),
+                   G_gymno = sum( (leaf_group == "needle") * G_ha ),
+                   prop_angio = G_angio / sum(G_ha))
+```
+
+
+## Observe tree-level competition variables
+
+```{r}
+ggplot(data_init, aes(y = rci, x = dbh_cm, color = site_name)) +
+  geom_point() +
+  theme_bw()
+
+ggplot(data_init, aes(y = rci, x = dbh_cm)) +
+  facet_grid(shadetol_group~functional_group) +
+  geom_point(size = 0.5) +
+  theme_bw()
+
+ggplot(data_init, aes(y = rci, x = dbh_cm)) +
+  facet_wrap(~species) +
+  geom_point() +
+  theme_bw()
+```
+
+```{r}
+ggplot(data_init, aes(y = bald_m2ha, x = dbh_cm, color = site_name)) +
+  geom_point() +
+  theme_bw()
+```
+
+```{r}
+ggplot(data_init, aes(y = balh_m2ha, x = dbh_cm, color = site_name)) +
+  geom_point() +
+  theme_bw()
+
+ggplot(data_init, aes(y = balh_m2ha, x = dbh_cm)) +
+  facet_grid(shadetol_group~functional_group) +
+  geom_point(size = 0.5) +
+  theme_bw()
+
+ggplot(data_init, aes(y = balh_m2ha, x = dbh_cm)) +
+  facet_wrap(~species) +
+  geom_point() +
+  theme_bw()
+```
+
+```{r}
+ggplot(data_init, aes(y = compet_status, x = dbh_cm, color = site_name)) +
+  geom_point() +
+  theme_bw()
+```
+
+
+```{r}
+ggplot(data_init, aes(y = rci, x = balh_m2ha, color = site_name)) +
+  geom_point() +
+  theme_bw()
+```
 
 
 # Preliminary analysis
@@ -158,15 +238,28 @@ ggplot(data = output_lad_method1,
 The mean LAD over all sensors that converged was about `r round(mean(output_lad_method1$best_lad[output_lad_method1$converged]), 3)`
 
 
-# Bayesian calibration
-
-50,000 iterations (20,000 burning), 5 chain, for BATOTxDBH model angio/gymno
-
 ```{r}
-load("output/calib/out_20260127_dbhXbatot_spRandom.Rdata")
+output_lad_method1 %>% 
+  dplyr::left_join(data_compo, by = c("site" = "site_name")) %>% 
+  dplyr::filter(converged) %>% 
+  dplyr::group_by() %>% 
+  
+  ggplot(aes(y = best_lad, x = batot_m2ha, color = prop_angio)) +
+  geom_point() +
+  scale_color_viridis_c() +
+  theme_bw()
 ```
 
-```{r}
+
+# Bayesian calibration
+
+150,000 iterations (0 burning), 5 chain, for BATOTxDBH model, with gymno as a fixed effect and species as random effect
+
+```{r load_model}
+load("output/calib/out_20260320_dbhXbatotXleafxshadetol.Rdata")
+```
+
+```{r data_trace}
 data_trace <- output_models_list$output %>% 
   purrr::map(~.x$output) %>% 
   setNames(output_models_list$output %>% 
@@ -185,10 +278,17 @@ data_trace <- output_models_list$output %>%
   
   # Called the non species-specific model a mean species 
   dplyr::select(id_simu, id_model, chain, subchain, iteration,
-                sigma_log, sigma_intercept_log,
+                sigma_mod_log, sigma_sp_log,
                 sigma_site_log, sigma_origin_log,
-                contains("intercept"), contains("dbh"),
-                contains("batot"), contains("dbhXbatot")) %>% 
+                intercept.broad_high, intercept.broad_low,
+                intercept.needle_high, intercept.needle_low,
+                dbh.broad_high, dbh.broad_low,
+                dbh.needle_high, dbh.needle_low,
+                batot.broad_high, batot.broad_low,
+                batot.needle_high, batot.needle_low,
+                dbhXbatot.broad_high, dbhXbatot.broad_low,
+                dbhXbatot.needle_high, dbhXbatot.needle_low
+  ) %>% 
   tidyr::pivot_longer(!c(id_simu, id_model, chain, subchain, iteration),
                       names_to = "parameter",
                       values_to = "estimate")
@@ -197,16 +297,18 @@ data_trace <- output_models_list$output %>%
 
 ## Model sigmas
 
-```{r}
+```{r trace_sigma}
 data_trace %>% 
   
-  dplyr::filter(parameter %in% c("sigma_log", "sigma_intercept_log",
+  dplyr::filter(parameter %in% c("sigma_mod_log", "sigma_sp_log",
                                  "sigma_site_log", "sigma_origin_log")) %>% 
   
   ggplot(aes(y = estimate, x = iteration, 
              color = chain, linetype = subchain)) +
   facet_wrap(~parameter, scales = "free", ncol = 2) +
   geom_line() +
+  
+  geom_vline(xintercept = ceiling(550000 / 3), linetype = "dashed") +
   
   labs(title = "Convergence of the sigma parameters") +
   
@@ -218,19 +320,100 @@ data_trace %>%
    
 ## Predictor parameters
 
-```{r}
+### Shade-tolerant broadleaved
+
+```{r trace_broad_high}
 data_trace %>% 
   
-  dplyr::filter(parameter %in% c("mean_intercept", "dbh", "batot", "dbhXbatot")) %>% 
+  dplyr::filter(parameter %in% c("intercept.broad_high", 
+                                 "dbh.broad_high", 
+                                 "batot.broad_high", 
+                                 "dbhXbatot.broad_high")) %>% 
   
   ggplot(aes(y = estimate, x = iteration, 
              color = chain, linetype = subchain)) +
   facet_wrap(~parameter, scales = "free") +
   geom_line() +
   
+  geom_vline(xintercept = ceiling(550000 / 3), linetype = "dashed") +
   geom_hline(yintercept = 0) +
   
-  labs(title = "Convergence of predictor parameters") +
+  labs(title = "Convergence of predictor parameters for shade-tolerant broadleaved") +
+  
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+```
+
+### Shade-intolerant broadleaved
+
+```{r trace_broad_low}
+data_trace %>% 
+  
+  dplyr::filter(parameter %in% c("intercept.broad_low", 
+                                 "dbh.broad_low", 
+                                 "batot.broad_low", 
+                                 "dbhXbatot.broad_low")) %>% 
+  
+  ggplot(aes(y = estimate, x = iteration, 
+             color = chain, linetype = subchain)) +
+  facet_wrap(~parameter, scales = "free") +
+  geom_line() +
+  
+  geom_vline(xintercept = ceiling(550000 / 3), linetype = "dashed") +
+  geom_hline(yintercept = 0) +
+  
+  labs(title = "Convergence of predictor parameters for shade-intolerant broadleaved") +
+  
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+```
+
+### Shade-tolerant needle
+
+```{r trace_needle_high}
+data_trace %>% 
+  
+  dplyr::filter(parameter %in% c("intercept.needle_high", 
+                                 "dbh.needle_high", 
+                                 "batot.needle_high", 
+                                 "dbhXbatot.needle_high")) %>% 
+  
+  ggplot(aes(y = estimate, x = iteration, 
+             color = chain, linetype = subchain)) +
+  facet_wrap(~parameter, scales = "free") +
+  geom_line() +
+  
+  geom_vline(xintercept = ceiling(550000 / 3), linetype = "dashed") +
+  geom_hline(yintercept = 0) +
+  
+  labs(title = "Convergence of predictor parameters for shade-tolerant needled") +
+  
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+```
+
+### Shade-intolerant needle
+
+```{r trace_needle_low}
+data_trace %>% 
+  
+  dplyr::filter(parameter %in% c("intercept.needle_low", 
+                                 "dbh.needle_low", 
+                                 "batot.needle_low", 
+                                 "dbhXbatot.needle_low")) %>% 
+  
+  ggplot(aes(y = estimate, x = iteration, 
+             color = chain, linetype = subchain)) +
+  facet_wrap(~parameter, scales = "free") +
+  geom_line() +
+  
+  geom_vline(xintercept = ceiling(550000 / 3), linetype = "dashed") +
+  geom_hline(yintercept = 0) +
+  
+  labs(title = "Convergence of predictor parameters for shade-intolerant needled") +
   
   theme_bw() +
   theme(plot.title = element_text(hjust = 0.5),
@@ -238,55 +421,93 @@ data_trace %>%
 ```
 
 
+
 # Main analysis
 
-```{r}
-load("output/data/outdata_20260113_dbhXbatot_phylogeny.Rdata")
+```{r output_data}
+load("output/data/outdata_20260320_dbhXbatotXleafxshadetol.Rdata")
 
-tar_load(data_stands)
-tar_load(LAD_CONTROL)
-
-data_crown <- data_stands %>% 
-  purrr::map(~.x$trees) %>% 
-  dplyr::bind_rows(.id = "site_name") %>% 
-  dplyr::mutate(
-    rmean_m = (rn_m + rs_m + re_m + rw_m) / 4,
-    cdepth_m = h_m - hbase_m
-  )
-
-data_compo <- data_crown %>%  
-  dplyr::group_by(site_name, batot_m2ha) %>% 
-  dplyr::summarise(G_angio = sum( (phylogeny == "angiosperm") * G_ha ),
-                   G_gymno = sum( (phylogeny == "gymnosperm") * G_ha ),
-                   prop_angio = G_angio / sum(G_ha))
-
-data_output_tree <- output_data_list$data_output_tree
-data_output_stand <- output_data_list$data_output_stand
-data_output_light_trees <- output_data_list$data_output_light$trees
-data_output_light_stand <- output_data_list$data_output_light$stand
+# data_output_tree <- output_data_list$data_output_tree %>% 
+#   dplyr::left_join(init_db$plots %>% 
+#                      dplyr::select(site_name = name, 
+#                                    site_origin = origin), 
+#                    by = "site_name") %>% 
+#   dplyr::mutate(is_gymno = functional_group == "gymnosperm")
+# 
+# data_output_stand <- output_data_list$data_output_stand
+# data_output_light_trees <- output_data_list$data_output_light$trees
+# data_output_light_stand <- output_data_list$data_output_light$stand
 ```
 
-```{r}
+```{r graph_moda}
 # Define modalities for graphs
-params <- output_models_list$params[[1]]
+params <- output_data_list$output_params[[1]]
 
 batot_m2ha_low <- 10
-batot_m2ha_high <- 40
+batot_m2ha_high <- 30
 ```
 
 
-## LAD predictions from model calibration
+## Interaction dbh-compet on intra-crown leaf distribution
 
-```{r}
+
+### Parameters posterior
+
+```{r mod_posterior}
+params2plot <- c("p_sigma_mod_log", 
+                 "p_sigma_sp_log",
+                 "p_sigma_site_log", 
+                 "p_sigma_origin_log",
+                 
+                 "p_intercept.broad_high", 
+                 "p_dbh.broad_high", 
+                 "p_batot.broad_high", 
+                 "p_dbhXbatot.broad_high",
+                 
+                 "p_intercept.broad_low", 
+                 "p_dbh.broad_low", 
+                 "p_batot.broad_low", 
+                 "p_dbhXbatot.broad_low",
+                 
+                 "p_intercept.needle_high", 
+                 "p_dbh.needle_high", 
+                 "p_batot.needle_high", 
+                 "p_dbhXbatot.needle_high",
+                 
+                 "p_intercept.needle_low", 
+                 "p_dbh.needle_low", 
+                 "p_batot.needle_low", 
+                 "p_dbhXbatot.needle_low")
+
+params %>% 
+  dplyr::select(rep, all_of(params2plot)) %>% 
+  tidyr::pivot_longer(all_of(params2plot),
+                      names_to = "param",
+                      names_prefix = "p_") %>% 
+  dplyr::mutate(rep = as.factor(rep)) %>% 
+  
+  ggplot(aes(x = value, color = rep)) +
+  geom_density() +
+  facet_wrap(~param, scales = "free") +
+  theme_bw()
+```
+
+
+
+### LAD predictions from model calibration
+
+```{r lad_pred}
 ## ------- LAD = f(DBH) for two BATOT ----
-tidyr::crossing(
+data_pred_lad <- tidyr::crossing(
     params,
     dbh_cm = seq(
       quantile(output_models_list$setup[[1]]$dbh_vect, 0.025),
       quantile(output_models_list$setup[[1]]$dbh_vect, 0.975),
       length.out = 100
     ),
-    compet_intensity = c("low", "high")
+    compet_intensity = c("low", "high"),
+    leaf_group = c("broadleaved", "needled"),
+    shade_tolerance = c("low", "high")
   ) %>% 
   
   dplyr::mutate(
@@ -297,52 +518,103 @@ tidyr::crossing(
                         batot_m2ha_high),
     
     # Exponentiate sigmas
-    sigma_mod = exp(sigma_log),
-    sigma_site = exp(sigma_site_log),
-    sigma_origin = exp(sigma_origin_log),
-    sigma_intercept = exp(sigma_intercept_log),
+    sigma_mod = exp(p_sigma_mod_log),
+    sigma_sp = exp(p_sigma_sp_log),
+    sigma_site = exp(p_sigma_site_log),
+    sigma_origin = exp(p_sigma_origin_log),
     
-    # Compute variance (do not forget that we fit a log_normal LAD, 
-    # thus consider variance term when back transforming)
-    variance_sum = sigma_mod^2 + sigma_site^2 + sigma_origin^2 + sigma_intercept^2,
+    # Compute variance (do not forget that we fit a log_normal LAD, thus consider variance term when back transforming)
+    variance_sum = sigma_mod^2 + sigma_sp^2 + sigma_site^2 + sigma_origin^2,
     
     # Restandardize predictors
-    dbh_std = (dbh_cm - output_models_list$setup[[1]]$dbh_mean) /
-      output_models_list$setup[[1]]$dbh_sd,
+    dbh_std = (dbh_cm - output_models_list$setup[[1]]$dbh_mean) / output_models_list$setup[[1]]$dbh_sd,
+    batot_std = (batot_m2ha - output_models_list$setup[[1]]$batot_mean) / output_models_list$setup[[1]]$batot_sd
     
-    batot_std = (batot_m2ha - output_models_list$setup[[1]]$batot_mean) /
-      output_models_list$setup[[1]]$batot_sd
   ) %>% 
   
   dplyr::mutate(
-    lad = exp(mean_intercept + 
-                dbh_std * dbh + 
-                batot_std * batot +
-                dbh_std * batot_std * dbhXbatot + 
-                0.5*variance_sum)
+    
+    lad = case_when(
+      
+      leaf_group == "broadleaved" & shade_tolerance == "low" ~ 
+        exp(p_intercept.broad_high + 
+              p_dbh.broad_high * dbh_std + 
+              p_batot.broad_high * batot_std +
+              p_dbhXbatot.broad_high * dbh_std * batot_std + 
+              0.5*variance_sum),
+      
+      leaf_group == "broadleaved" & shade_tolerance == "high" ~ 
+        exp(p_intercept.broad_low + 
+              p_dbh.broad_low * dbh_std + 
+              p_batot.broad_low * batot_std +
+              p_dbhXbatot.broad_low * dbh_std * batot_std + 
+              0.5*variance_sum),
+      
+      leaf_group == "needled" & shade_tolerance == "low" ~ 
+        exp(p_intercept.needle_high + 
+              p_dbh.needle_high * dbh_std + 
+              p_batot.needle_high * batot_std +
+              p_dbhXbatot.needle_high * dbh_std * batot_std + 
+              0.5*variance_sum),
+      
+      leaf_group == "needled" & shade_tolerance == "high" ~ 
+        exp(p_intercept.needle_low + 
+              p_dbh.needle_low * dbh_std + 
+              p_batot.needle_low * batot_std +
+              p_dbhXbatot.needle_low * dbh_std * batot_std + 
+              0.5*variance_sum)
+    )
+    
   ) %>% 
   
   # Compute summary statistics
-  dplyr::group_by(rep, dbh_cm, compet_intensity) %>% 
+  dplyr::group_by(dbh_cm, compet_intensity, leaf_group, shade_tolerance) %>% 
   dplyr::summarise(
     lad_median = median(lad),
     lad_lower = quantile(lad, 0.025),
     lad_upper = quantile(lad, 0.975)
-  ) %>% 
+  )
   
-  ggplot(aes(y = lad_median, x = dbh_cm, color = compet_intensity)) +
-  facet_wrap(~rep) +
+
+plot_pred_lad <- data_pred_lad %>% 
+  
+  ggplot(aes(y = lad_median, x = dbh_cm, 
+             color = compet_intensity)) +
+  facet_wrap(shade_tolerance~leaf_group, scales = "free") +
   
   geom_line() +
   geom_ribbon(aes(ymin = lad_lower, ymax = lad_upper,
                   fill = compet_intensity),
               color = NA,
-              alpha = 0.4) +
+              alpha = 0.2) +
   
   xlab("DBH (in cm)") +
-  ylab("LAD prediction") +
-  labs(title = "LAD models along a DBH gradient",
-       subtitle = "between 2.5% and 97.5% quantiles of all species observed DBH\nfor a total basal area of either 10m2ha (low) or 40m2ha (high)") +
+  ylab("LAD prediction (in m2/m3)") +
+  labs(title = "Leaf area density",
+       subtitle = "Model prediction") +
+  
+  theme_bw() +
+  theme(legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  scale_color_manual(values = c("low" = "olivedrab", "high" = "darkgreen")) +
+  scale_fill_manual(values = c("low" = "olivedrab", "high" = "darkgreen"))
+
+plot_pred_lad
+
+
+plot_pred_lad_noribbon <- data_pred_lad %>% 
+  
+  ggplot(aes(y = lad_median, x = dbh_cm, 
+             color = compet_intensity)) +
+  facet_grid(shade_tolerance~leaf_group, scales = "free") +
+  
+  geom_line(linewidth = 1.1) +
+  
+  xlab("DBH (in cm)") +
+  ylab("LAD prediction (in m2/m3)") +
+  labs(title = "Leaf area density",
+       subtitle = "Model prediction") +
   
   theme_bw() +
   theme(legend.position = "top",
@@ -350,502 +622,611 @@ tidyr::crossing(
         plot.subtitle = element_text(hjust = 0.5)) +
   scale_color_manual(values = c("low" = "olivedrab", "high" = "darkgreen")) +
   scale_fill_manual(values = c("low" = "olivedrab", "high" = "darkgreen"))
+
+plot_pred_lad_noribbon
 ```
 
 
-## Estimate LAD on initial data
-
-```{r}
-data_output_tree %>% 
-  
-  ggplot(aes(y = lad_model_median, x = dbh_cm, color = batot_m2ha)) +
-  facet_wrap(~phylogeny) +
-  
-  geom_pointrange(aes(ymin = lad_model_lower, ymax = lad_model_upper),
-                  alpha = 0.5, size = 0.2) +
-  scale_color_viridis_c(direction = -1) +
-  
-  geom_hline(yintercept = LAD_CONTROL, linetype = "dashed", 
-             color = "black", linewidth = 1) +
-  
-  xlab("DBH (in cm)") +
-  ylab("Predicted leaf area density (in m2/ha)") +
-  
-  theme_bw() +
-  theme(legend.position = "right",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5))
-```
-
-
-
-## Link predicted LAD to observed tree crown volume
-
-```{r}
-data_output_tree %>% 
-
-  ggplot(aes(y = lad_model_median, x = volume_m3, color = batot_m2ha)) +
-  facet_wrap(~phylogeny) +
-  
-  geom_pointrange(aes(ymin = lad_model_lower, ymax = lad_model_upper),
-                  alpha = 0.5, size = 0.2) +
-  scale_color_viridis_c(direction = -1) +
-
-  geom_hline(yintercept = LAD_CONTROL, linetype = "dashed", 
-             color = "black", linewidth = 1) +
-  
-  xlab("Crown volume (in m3)") +
-  ylab("Predicted leaf area density (in m2/ha)") +
-  
-  theme_bw() +
-  theme(legend.position = "right",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5))
-```
-
-
-## Tree-level consequences on total leaf area LA
-
-```{r}
-data_output_tree %>% 
-  dplyr::select(site_name, id_tree, dbh_cm, batot_m2ha, species, phylogeny,
-                contains("la_"), -contains("diff_la")) %>% 
-  tidyr::pivot_longer(
-    !c(site_name, id_tree, species, phylogeny, dbh_cm, batot_m2ha),
-    names_pattern = "la_(.*)_(.*)",
-    names_to = c("lad_model", "var"),
-    values_to = "leaf_area_m2"
-  ) %>% 
-  tidyr::pivot_wider(
-    names_from = "var",
-    values_from = "leaf_area_m2"
-  ) %>% 
-
-  ggplot(aes(y = median, x = dbh_cm, color = batot_m2ha)) +
-  facet_grid(lad_model~phylogeny) +
-  
-  # geom_point() +
-  geom_pointrange(aes(ymin = lower, ymax = upper),
-                  alpha = 0.5, size = 0.2) +
-  scale_color_viridis_c(direction = -1) +
-  
-  geom_smooth(color = "salmon") +
-  
-  xlab("DBH (in cm)") +
-  ylab("Total leaf area (in m2)") +
-  
-  theme_bw() +
-  theme(legend.position = "right",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5))
-```
-
-
-## Stand-level consequences on leaf area index LAI
-
-```{r}
-# --------- Observe effect on LAI  --------
-data_output_stand %>% 
-  dplyr::select(site_name, batot_m2ha, 
-                contains("lai_model"), contains("lai_control")) %>% 
-  tidyr::pivot_longer(
-    !c(site_name, batot_m2ha),
-    names_pattern = "lai_(.*)_(.*)",
-    names_to = c("lad_model", "var"),
-    values_to = "lai_m2m2"
-  ) %>% 
-  tidyr::pivot_wider(
-    names_from = "var",
-    values_from = "lai_m2m2"
-  ) %>% 
-  
-  dplyr::left_join(data_compo %>% 
-                     dplyr::select(site_name, prop_angio), 
-                   by = "site_name") %>% 
-  dplyr::filter(lad_model == "model") %>% 
-  
-  ggplot(aes(y = median, x = prop_angio, color = batot_m2ha)) +
-  geom_pointrange(aes(ymin = lower, ymax = upper)) +
-  geom_smooth(method = "lm", formula = y~x) +
-  
-  xlab("Proportion of angiosperms") +
-  ylab("Stand leaf area index (in m2/m2)") +
-  
-  theme_bw() +
-  theme(legend.position = "right",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5)) +
-  scale_color_viridis_c(direction = -1)
-```
-
-
-## Stand-level comparison with control model
-
-```{r}
-data_output_stand %>% 
-  dplyr::select(site_name, batot_m2ha, 
-                contains("lai_model"), contains("lai_control")) %>% 
-  tidyr::pivot_longer(
-    !c(site_name, batot_m2ha),
-    names_pattern = "lai_(.*)_(.*)",
-    names_to = c("lad_model", "var"),
-    values_to = "lai_m2m2"
-  ) %>% 
-  tidyr::pivot_wider(
-    names_from = "var",
-    values_from = "lai_m2m2"
-  ) %>% 
-  
-  ggplot(aes(y = median, x = batot_m2ha, color = lad_model)) +
-  geom_pointrange(aes(ymin = lower, ymax = upper)) +
-  geom_smooth(method = "lm") +
-  
-  xlab("Total basal area (in m2/ha)") +
-  ylab("Stand leaf area index (in m2/m2)") +
-  
-  theme_bw() +
-  theme(legend.position = "top",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5)) 
-
-data_output_light_stand %>% 
-  dplyr::left_join(data_output_stand %>% 
-                     dplyr::select(site = site_name, batot_m2ha),
-                   by = "site") %>% 
-  dplyr::select(site, batot_m2ha, 
-                contains("pacl_mean")) %>% 
-  tidyr::pivot_longer(
-    !c(site, batot_m2ha),
-    names_pattern = "pacl_mean_(.*)_(.*)",
-    names_to = c("var", "lad_model"),
-    values_to = "pacl_mean"
-  ) %>% 
-  tidyr::pivot_wider(
-    names_from = "var",
-    values_from = "pacl_mean"
-  ) %>% 
-  
-  ggplot(aes(y = median, x = batot_m2ha, color = lad_model)) +
-  geom_pointrange(aes(ymin = lower, ymax = upper)) +
-  geom_smooth(method = "lm") +
-  
-  xlab("Total basal area (in m2/ha)") +
-  ylab("Mean proportion of above canopy light PACL") +
-  
-  theme_bw() +
-  theme(legend.position = "top",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5))
-```
-
-
-
-
-# Appendix
-
-## Basal area vs. compo
-
-```{r}
-ggplot(data_compo, aes(y = batot_m2ha, x = prop_angio)) +
-  geom_point() +
-  theme_bw() +
-  xlab("Proprotion of angiosperms in BA") +
-  ylab("Stand basal area (in m2/ha)")
-```
-
-
-## Basal area vs. DBH
-
-```{r}
-ggplot(data_output_tree, aes(y = batot_m2ha, x = phylogeny)) +
-  geom_boxplot() +
-  theme_bw() +
-  xlab("Tree clade") +
-  ylab("Stand basal area (in m2/ha)")
-
-ggplot(data_output_tree, aes(y = dbh_cm, x = phylogeny)) +
-  geom_boxplot() +
-  theme_bw() +
-  xlab("Tree clade") +
-  ylab("Tree DBH (in cm)")
-
-ggplot(data_output_tree, aes(y = batot_m2ha, 
-                             x = species, color = species)) +
-  geom_boxplot() +
-  theme_bw() +
-  xlab("Tree species") +
-  ylab("Stand basal area (in m2/ha)")
-
-ggplot(data_output_tree, aes(y = dbh_cm, 
-                             x = species, color = species)) +
-  geom_boxplot() +
-  theme_bw() +
-  xlab("Tree species") +
-  ylab("Tree DBH (in cm)")
-
-ggplot(data_output_tree, aes(y = dbh_cm, x = batot_m2ha)) +
-  facet_wrap(~phylogeny) +
-  geom_point() +
-  theme_bw() +
-  xlab("Stand basal area (in m2/ha)") +
-  ylab("Tree DBH (in cm)")
-  
-ggplot(data_output_tree, aes(y = dbh_cm, x = batot_m2ha)) +
-  facet_wrap(~species) +
-  geom_point() +
-  theme_bw() +
-  xlab("Stand basal area (in m2/ha)") +
-  ylab("Tree DBH (in cm)")
-```
-
-
-## Crown allometries
-
-### Tree height
-
-```{r}
-coefs_height <- list("angiosperm" = NULL, "gymnosperm" = NULL)
-
-for (p in c("angiosperm", "gymnosperm")) {
-  
-  print(paste0("Fit for ", p, "..."))
-  
-  data_crown_tmp <- data_crown %>% 
-    dplyr::filter(phylogeny == p)
-  
-  mod_asympt_height <- h_m ~ 1.3 + b1 * (1-exp(-b2 * dbh_cm)) ^ b3
-  vars_rs_height <- data.frame(var = c("b1", "b2", "b3"), 
-                               start = c(quantile(data_crown_tmp$h_m, 
-                                                  probs = 0.97)*0.8, 0.07, 0.9))
-  
-  mod_height <- nls(mod_asympt_height,
-                    data = data_crown_tmp,
-                    start = setNames(as.list(vars_rs_height$start),
-                                     vars_rs_height$var),
-                    lower = c(0.0001, 0.0001, 0.0001), algorithm = "port",
-                    nls.control(maxiter = 1000, tol = 1e-1))
-
-  coefs_height[[p]] <- data.frame(as.list(coefficients(mod_height)))
-}
-
-coefs_height <- coefs_height %>% dplyr::bind_rows(.id = "phylogeny")
-coefs_height
-
-
-data_pred_height <- expand.grid(
-  dbh_cm = seq(
-    min(data_crown$dbh_cm), max(data_crown$dbh_cm),
-    length.out = 100
-  ),
-  phylogeny = c("angiosperm", "gymnosperm")
-) %>% 
-  
-  # Estimate mean crown radius
-  dplyr::left_join(coefs_height, by = "phylogeny") %>% 
-  dplyr::mutate(h_m = 1.3 + b1 * (1-exp(-b2 * dbh_cm)) ^ b3)
-```
-
-
-```{r}
-ggplot(data_crown, aes(y = h_m, x = dbh_cm)) +
-  facet_wrap(~phylogeny) +
-  
-  geom_point(mapping = aes(color = batot_m2ha),
-             alpha = 0.5) +
-  scale_color_viridis_c(direction = -1) +
-
-  geom_line(data = data_pred_height,
-            linewidth = 1.1) +
-  
-  theme_bw() +
-  xlab("Tree DBH (in cm)") +
-  ylab("Tree height (in m)")
-```
-
-
-### Crown base height
-
-```{r}
-ggplot(data_crown, aes(y = hbase_m, 
-                       x = dbh_cm, 
-                       color = batot_m2ha)) +
-  facet_wrap(~phylogeny) +
-  geom_point() +
-  
-  theme_bw() +
-  scale_color_viridis_c(direction = -1) +
-  xlab("Tree DBH (in cm)") +
-  ylab("Crown base height (in m)")
-```
-
-
-### Crown depth
-
-```{r}
-coefs_cdepth <- list("angiosperm" = NULL, "gymnosperm" = NULL)
-
-for (p in c("angiosperm", "gymnosperm")) {
-  
-  print(paste0("Fit for ", p, "..."))
-  
-  data_crown_tmp <- data_crown %>% 
-    dplyr::filter(phylogeny == p)
-  
-  init_par_cdepth <- coefficients(lm(log(cdepth_m) ~ log(dbh_cm), data_crown_tmp))
-
-  mod_cdepth <- nlme::gnls(
-    cdepth_m ~ (a1 + a3 * batot_m2ha) * (dbh_cm ^ a2),
-    data = data_crown_tmp,
-    params = list(a1 ~ 1, a2 ~ 1, a3 ~ 1),
-    start = c(a1 = exp(init_par_cdepth[1]), a2 = init_par_cdepth[2], a3 = 0),
-    control = gnlsControl(maxIter = 1000, tolerance = 0.1, nlsTol = 0.1)
-  )
-
-  coefs_cdepth[[p]] <- data.frame(as.list(coefficients(mod_cdepth)))
-}
-
-coefs_cdepth <- coefs_cdepth %>% dplyr::bind_rows(.id = "phylogeny")
-coefs_cdepth
-
-
-data_pred_cdepth <- expand.grid(
-  dbh_cm = seq(
-    min(data_crown$dbh_cm), max(data_crown$dbh_cm),
-    length.out = 100
-  ),
-  compet_intensity = c("low", "high"),
-  phylogeny = c("angiosperm", "gymnosperm")
-) %>% 
-  
-  # Set ref modalities for plot
-  dplyr::mutate(
-    batot_m2ha = ifelse(compet_intensity == "low",
-                        batot_m2ha_low,
-                        batot_m2ha_high)
-  ) %>% 
-  
-  # Estimate mean crown radius
-  dplyr::left_join(coefs_cdepth, by = "phylogeny") %>% 
-  dplyr::mutate(cdepth_m = (a1 + a3 * batot_m2ha) * (dbh_cm ^ a2))
-```
-
-```{r}
-ggplot(data_crown, aes(y = cdepth_m, x = dbh_cm)) +
-  facet_wrap(~phylogeny) +
-  
-  geom_point(mapping = aes(color = batot_m2ha),
-             alpha = 0.5) +
-  scale_color_viridis_c(direction = -1) +
-  ggnewscale::new_scale_color() +
-  
-  geom_line(data = data_pred_cdepth,
-            mapping = aes(color = compet_intensity),
-            linewidth = 1.1) +
-  scale_color_viridis_d() +
-  
-  theme_bw() +
-  xlab("Tree DBH (in cm)") +
-  ylab("Crown depth (in m)")
-```
-
-
-
-### Mean crown radius
-
-```{r}
-coefs_rmean <- list("angiosperm" = NULL, "gymnosperm" = NULL)
-
-for (p in c("angiosperm", "gymnosperm")) {
-  
-  print(paste0("Fit for ", p, "..."))
-  
-  data_crown_tmp <- data_crown %>% 
-    dplyr::filter(phylogeny == p)
-  
-  init_par_rmean <- coefficients(lm(log(rmean_m) ~ log(dbh_cm), data_crown_tmp))
-  
-  mod_no_compet <- nlme::gnls(
-    rmean_m ~ a1 * (dbh_cm ^ a2),
-    data = data_crown_tmp,
-    params = list(a1 ~ 1, a2 ~ 1),
-    start = c(a1 = exp(init_par_rmean[1]), a2 = init_par_rmean[2]),
-    control = gnlsControl(maxIter = 1000, tolerance = 0.1, nlsTol = 0.1)
-  )
-
-  mod_compet <- nlme::gnls(
-    rmean_m ~ (a1 + a3 * batot_m2ha) * (dbh_cm ^ a2),
-    data = data_crown_tmp,
-    params = list(a1 ~ 1, a2 ~ 1, a3 ~ 1),
-    start = c(a1 = exp(init_par_rmean[1]), a2 = init_par_rmean[2], a3 = 0),
-    control = gnlsControl(maxIter = 1000, tolerance = 0.1, nlsTol = 0.1)
-  )
-
-  print(anova(mod_no_compet, mod_compet))
-  
-  coefs_rmean[[p]] <- data.frame(as.list(coefficients(mod_compet)))
-}
-
-coefs_rmean <- coefs_rmean %>% dplyr::bind_rows(.id = "phylogeny")
-coefs_rmean
-
-
-data_pred_rmean <- expand.grid(
-  dbh_cm = seq(
-    min(data_crown$dbh_cm), max(data_crown$dbh_cm),
-    length.out = 100
-  ),
-  compet_intensity = c("low", "high"),
-  phylogeny = c("angiosperm", "gymnosperm")
-) %>% 
-  
-  # Set ref modalities for plot
-  dplyr::mutate(
-    batot_m2ha = ifelse(compet_intensity == "low",
-                        batot_m2ha_low,
-                        batot_m2ha_high)
-  ) %>% 
-  
-  # Estimate mean crown radius
-  dplyr::left_join(coefs_rmean, by = "phylogeny") %>% 
-  dplyr::mutate(rmean_m = (a1 + a3 * batot_m2ha) * (dbh_cm ^ a2))
-```
-
-
-```{r}
-ggplot(data_crown, aes(y = rmean_m, x = dbh_cm)) +
-  facet_wrap(~phylogeny) +
-  
-  geom_point(mapping = aes(color = batot_m2ha),
-             alpha = 0.5) +
-  scale_color_viridis_c(direction = -1) +
-  ggnewscale::new_scale_color() +
-  
-  geom_line(data = data_pred_rmean,
-            mapping = aes(color = compet_intensity),
-            linewidth = 1.1) +
-  scale_color_viridis_d() +
-  
-  theme_bw() +
-  xlab("Tree DBH (in cm)") +
-  ylab("Mean crown radius (in m)")
-```
-
-
-
-### Consequent crown volume
-
-```{r}
-ggplot(data_output_tree, aes(y = volume_m3, 
-                             x = dbh_cm, 
-                             color = batot_m2ha)) +
-  facet_wrap(~phylogeny) +
-  geom_point() +
-  geom_smooth(method = "gam") +
-  theme_bw() +
-  scale_color_viridis_c(direction = -1) +
-  xlab("Tree DBH (in cm)") +
-  ylab("Crown volume (in m)")
-```
+<!-- ### Tree-level consequences on leaf area -->
 
+<!-- ```{r la_pred} -->
+<!-- mod_la_ladmod <- lme4::glmer( -->
+<!--   formula = log(la_model_median) ~ log(dbh_cm)*log(batot_m2ha)*functional_group + -->
+<!--     (1 | species) + -->
+<!--     (1 | site_name), -->
+<!--   data = data_output_tree) -->
 
+<!-- summary(mod_la_ladmod) -->
 
+
+<!-- data_la_pred <- expand.grid( -->
+<!--     dbh_cm = 1:125, -->
+<!--     compet_intensity = c("low", "high"), -->
+<!--     functional_group = c("gymnosperm", "angiosperm") -->
+<!--   ) %>% -->
+
+<!-- # Set ref modalities for plot -->
+<!--   dplyr::mutate( -->
+<!--     batot_m2ha = ifelse(compet_intensity == "low", -->
+<!--                         batot_m2ha_low, -->
+<!--                         batot_m2ha_high), -->
+<!--     is_gymno = functional_group == "gymnosperm" -->
+<!--   ) %>% -->
+
+<!--   # Predict total leaf area -->
+<!--   dplyr::mutate( -->
+<!--     la_m2 = exp(predict(mod_la_ladmod, newdata = ., re.form = NA) + -->
+<!--                   sigma(mod_la_ladmod)^2/2) -->
+<!--   ) -->
+
+
+<!-- plot_la <- data_output_tree %>% -->
+
+<!--   ggplot(aes(y = la_model_median, x = dbh_cm, -->
+<!--              color = batot_m2ha, shape = functional_group)) + -->
+
+<!--   geom_pointrange(aes(ymin = la_model_lower, ymax = la_model_upper), -->
+<!--                   alpha = 0.5, size = 0.2) + -->
+<!--   scale_color_viridis_c(direction = -1) + -->
+<!--   # guides(colour = guide_colour(title.position = "top")) + -->
+<!--   ggnewscale::new_scale_color() + -->
+
+<!--   geom_line(data = data_la_pred, -->
+<!--             mapping = aes(y = la_m2, -->
+<!--                           x = dbh_cm, -->
+<!--                           color = compet_intensity, -->
+<!--                           linetype = functional_group), -->
+<!--             inherit.aes = F, -->
+<!--             linewidth = 1.1) + -->
+<!--   scale_color_manual(values = c("low" = "olivedrab", "high" = "darkgreen")) + -->
+
+<!--   xlab("DBH (in cm)") + -->
+<!--   ylab("Estimated tree leaf area (in m2)") + -->
+<!--   labs(title = "Leaf area", -->
+<!--        subtitle = "Estimated from observed crown volume") + -->
+
+<!--   theme_bw() + -->
+<!--   theme(legend.position = "top", -->
+<!--         plot.title = element_text(hjust = 0.5), -->
+<!--         plot.subtitle = element_text(hjust = 0.5)) + -->
+<!--   guides(colour = guide_legend(title.position = "top", ncol = 1), -->
+<!--          shape = guide_legend(title.position = "top", ncol = 1), -->
+<!--          linetype = guide_legend(title.position = "top", ncol = 1)) -->
+<!-- ``` -->
+
+
+<!-- ### Final graph -->
+
+<!-- ```{r lad_la_graph} -->
+<!-- legend_leaf <- cowplot::get_legend(plot_la) -->
+<!-- plot_la <- plot_la + theme(legend.position = "none") -->
+
+<!-- cowplot::plot_grid(legend_leaf) -->
+
+<!-- cowplot::plot_grid( -->
+<!--   plot_lad, plot_la, -->
+<!--   ncol = 2 -->
+<!-- ) -->
+<!-- ``` -->
+
+
+
+<!-- ## Interaction dbh-compet on crown dimensions -->
+
+<!-- ### On observed crown volume -->
+
+<!-- ```{r} -->
+<!-- mod_cv_angio <- lme4::lmer( -->
+<!--   log(volume_m3) ~ log(dbh_cm) * log(batot_m2ha) + -->
+<!--     (1 | species) + (1 | site_origin/site_name), -->
+<!--   data = data_output_tree, -->
+<!--   subset = functional_group == "angiosperm" -->
+<!-- ) -->
+
+<!-- summary(mod_cv_angio) -->
+
+
+<!-- mod_cv_gymno <- lme4::lmer( -->
+<!--   log(volume_m3) ~ log(dbh_cm) * log(batot_m2ha) + -->
+<!--     (1 | species) + (1 | site_origin/site_name), -->
+<!--   data = data_output_tree, -->
+<!--   subset = functional_group == "gymnosperm" -->
+<!-- ) -->
+
+<!-- summary(mod_cv_gymno) -->
+
+
+<!-- data_cv_pred <- expand.grid( -->
+<!--     dbh_cm = 1:125, -->
+<!--     compet_intensity = c("low", "high") -->
+<!--   ) %>% -->
+
+<!-- # Set ref modalities for plot -->
+<!--   dplyr::mutate( -->
+<!--     batot_m2ha = ifelse(compet_intensity == "low", -->
+<!--                         batot_m2ha_low, -->
+<!--                         batot_m2ha_high), -->
+<!--   ) %>% -->
+
+<!--   # Predict total leaf area -->
+<!--   dplyr::mutate( -->
+
+<!--     volume_m3_angiosperm = exp( -->
+<!--       predict(mod_cv_angio, newdata = ., re.form = NA) + -->
+<!--         sigma(mod_cv_angio)^2/2 -->
+<!--     ), -->
+
+<!--     volume_m3_gymnosperm = exp( -->
+<!--       predict(mod_cv_gymno, newdata = ., re.form = NA) + -->
+<!--         sigma(mod_cv_gymno)^2/2 -->
+<!--     ) -->
+<!--   ) %>% -->
+
+<!--   tidyr::pivot_longer( -->
+<!--     c(volume_m3_angiosperm, volume_m3_gymnosperm), -->
+<!--     names_prefix = "volume_m3_", -->
+<!--     values_to = "volume_m3", -->
+<!--     names_to = "functional_group" -->
+<!--   ) -->
+
+
+<!-- plt_CV <- ggplot(data_output_tree, aes(y = volume_m3, -->
+<!--                              x = dbh_cm, -->
+<!--                              color = batot_m2ha)) + -->
+<!--   facet_wrap(~functional_group, ncol = 1) + -->
+
+<!--   geom_point(aes(shape = functional_group)) + -->
+<!--   scale_color_viridis_c(direction = -1) + -->
+<!--   ggnewscale::new_scale_color() + -->
+
+<!--   geom_line(data = data_cv_pred, -->
+<!--             mapping = aes(y = volume_m3, -->
+<!--                           x = dbh_cm, -->
+<!--                           color = compet_intensity), -->
+<!--             inherit.aes = F, -->
+<!--             linewidth = 1.1) + -->
+<!--   scale_color_manual(values = c("low" = "olivedrab", "high" = "darkgreen")) + -->
+
+<!--   theme_bw() + -->
+<!--   theme(legend.position = "none", -->
+<!--         plot.title = element_text(hjust = 0.5)) + -->
+<!--   labs(title = "Observed crown volume") + -->
+<!--   xlab("Tree DBH (in cm)") + -->
+<!--   ylab("Crown volume (in m)") -->
+<!-- ``` -->
+
+
+<!-- ### Tree height -->
+
+<!-- ```{r} -->
+<!-- coefs_height <- list("angiosperm" = NULL, "gymnosperm" = NULL) -->
+
+<!-- for (p in c("angiosperm", "gymnosperm")) { -->
+
+<!--   print(paste0("Fit for ", p, "...")) -->
+
+<!--   data_crown_tmp <- data_init %>% -->
+<!--     dplyr::filter(functional_group == p) -->
+
+<!--   mod_asympt_height <- h_m ~ 1.3 + (b1 + b4 * batot_m2ha) * (1-exp(-b2 * dbh_cm)) ^ b3 -->
+<!--   vars_rs_height <- data.frame(var = c("b1", "b2", "b3", "b4"), -->
+<!--                                start = c(quantile(data_crown_tmp$h_m, -->
+<!--                                                   probs = 0.97)*0.8, 0.07, 0.9, 0)) -->
+
+<!--   mod_height <- nls(mod_asympt_height, -->
+<!--                     data = data_crown_tmp, -->
+<!--                     start = setNames(as.list(vars_rs_height$start), -->
+<!--                                      vars_rs_height$var), -->
+<!--                     lower = c(0.0001, 0.0001, 0.0001, 0), algorithm = "port", -->
+<!--                     nls.control(maxiter = 1000, tol = 1e-1)) -->
+
+<!--   coefs_height[[p]] <- data.frame(as.list(coefficients(mod_height))) -->
+<!-- } -->
+
+<!-- coefs_height <- coefs_height %>% dplyr::bind_rows(.id = "functional_group") -->
+<!-- coefs_height -->
+
+
+<!-- data_pred_height <- expand.grid( -->
+<!--   dbh_cm = seq( -->
+<!--     min(data_init$dbh_cm), max(data_init$dbh_cm), -->
+<!--     length.out = 100 -->
+<!--   ), -->
+<!--   functional_group = c("angiosperm", "gymnosperm"), -->
+<!--   compet_intensity = c("low", "high") -->
+<!-- ) %>% -->
+
+<!--   # Set ref modalities for plot -->
+<!--   dplyr::mutate( -->
+<!--     batot_m2ha = ifelse(compet_intensity == "low", -->
+<!--                         batot_m2ha_low, -->
+<!--                         batot_m2ha_high), -->
+<!--   ) %>% -->
+
+<!--   # Estimate mean crown radius -->
+<!--   dplyr::left_join(coefs_height, by = "functional_group") %>% -->
+<!--   dplyr::mutate(h_m = 1.3 + (b1 + b4 * batot_m2ha) * (1-exp(-b2 * dbh_cm)) ^ b3) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- plt_height <- ggplot(data_init, aes(y = h_m, -->
+<!--                                     x = dbh_cm, -->
+<!--                                     color = batot_m2ha)) + -->
+<!--   facet_wrap(~functional_group, ncol = 1) + -->
+
+<!--   geom_point(aes(shape = functional_group)) + -->
+<!--   scale_color_viridis_c(direction = -1) + -->
+<!--   ggnewscale::new_scale_color() + -->
+
+<!--   geom_line(data = data_pred_height, -->
+<!--             mapping = aes(y = h_m, -->
+<!--                           x = dbh_cm, -->
+<!--                           color = compet_intensity), -->
+<!--             inherit.aes = F, -->
+<!--             linewidth = 1.1) + -->
+<!--   scale_color_manual(values = c("low" = "olivedrab", "high" = "darkgreen")) + -->
+
+<!--   theme_bw() + -->
+<!--   theme(legend.position = "none", -->
+<!--         plot.title = element_text(hjust = 0.5)) + -->
+<!--   labs(title = "Observed tree height") + -->
+<!--   xlab("Tree DBH (in cm)") + -->
+<!--   ylab("Tree height (in m)") -->
+<!-- ``` -->
+
+
+<!-- ### Final graph -->
+
+<!-- ```{r} -->
+<!-- plt_CV | plt_height -->
+<!-- ``` -->
+
+<!-- ## Effect on estimated light interception -->
+
+
+
+<!-- # Appendix -->
+
+<!-- ## Basal area vs. compo -->
+
+<!-- ```{r} -->
+<!-- ggplot(data_compo, aes(y = batot_m2ha, x = prop_angio)) + -->
+<!--   geom_point() + -->
+<!--   theme_bw() + -->
+<!--   xlab("Proprotion of angiosperms in BA") + -->
+<!--   ylab("Stand basal area (in m2/ha)") -->
+<!-- ``` -->
+
+
+<!-- ## Basal area vs. DBH -->
+
+<!-- ```{r} -->
+<!-- table(data_init$leaf_group, data_init$shadetol_group) -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- ggplot(data_init, aes(y = batot_m2ha, -->
+<!--                       x = leaf_group, -->
+<!--                       color = shadetol_group)) + -->
+<!--   geom_boxplot() + -->
+<!--   theme_bw() + -->
+<!--   xlab("Functional group") + -->
+<!--   ylab("Stand basal area (in m2/ha)") -->
+
+<!-- ggplot(data_init, aes(y = dbh_cm, -->
+<!--                       x = leaf_group, -->
+<!--                       color = shadetol_group)) + -->
+<!--   geom_boxplot() + -->
+<!--   theme_bw() + -->
+<!--   xlab("Functional group") + -->
+<!--   ylab("Tree DBH (in cm)") -->
+
+<!-- ggplot(data_init, aes(y = batot_m2ha, -->
+<!--                       x = species, -->
+<!--                       color = species)) + -->
+<!--   geom_boxplot() + -->
+<!--   theme_bw() + -->
+<!--   xlab("Tree species") + -->
+<!--   ylab("Stand basal area (in m2/ha)") + -->
+<!--   theme(axis.text.x = element_text(angle = 45, hjust = 1)) -->
+
+<!-- ggplot(data_init, aes(y = dbh_cm, -->
+<!--                       x = species, -->
+<!--                       color = species)) + -->
+<!--   geom_boxplot() + -->
+<!--   theme_bw() + -->
+<!--   xlab("Tree species") + -->
+<!--   ylab("Tree DBH (in cm)") + -->
+<!--   theme(axis.text.x = element_text(angle = 45, hjust = 1)) -->
+
+<!-- ggplot(data_init, aes(y = dbh_cm, -->
+<!--                       x = batot_m2ha)) + -->
+<!--   facet_grid(shadetol_group~leaf_group) + -->
+<!--   geom_point() + -->
+<!--   theme_bw() + -->
+<!--   xlab("Stand basal area (in m2/ha)") + -->
+<!--   ylab("Tree DBH (in cm)") -->
+
+<!-- ggplot(data_init, aes(y = dbh_cm, -->
+<!--                       x = batot_m2ha)) + -->
+<!--   facet_wrap(~species) + -->
+<!--   geom_point() + -->
+<!--   theme_bw() + -->
+<!--   xlab("Stand basal area (in m2/ha)") + -->
+<!--   ylab("Tree DBH (in cm)") -->
+<!-- ``` -->
+
+
+<!-- ## Crown dimensions -->
+
+<!-- ### Tree height -->
+
+<!-- ```{r} -->
+<!-- ggplot(data_init, aes(y = h_m, -->
+<!--                       x = dbh_cm, -->
+<!--                       color = batot_m2ha)) + -->
+<!--   facet_grid(shadetol_group~leaf_group) + -->
+<!--   geom_point() + -->
+
+<!--   theme_bw() + -->
+<!--   scale_color_viridis_c(direction = -1) + -->
+<!--   xlab("Tree DBH (in cm)") + -->
+<!--   ylab("Tree height (in m)") -->
+<!-- ``` -->
+
+<!-- ### Crown base height -->
+
+<!-- ```{r} -->
+<!-- ggplot(data_init, aes(y = hbase_m, -->
+<!--                       x = dbh_cm, -->
+<!--                       color = batot_m2ha)) + -->
+<!--   facet_grid(shadetol_group~leaf_group) + -->
+<!--   geom_point() + -->
+
+<!--   theme_bw() + -->
+<!--   scale_color_viridis_c(direction = -1) + -->
+<!--   xlab("Tree DBH (in cm)") + -->
+<!--   ylab("Crown base height (in m)") -->
+<!-- ``` -->
+
+
+<!-- ### Crown depth -->
+
+<!-- ```{r} -->
+<!-- coefs_cdepth <- list("angiosperm" = NULL, "gymnosperm" = NULL) -->
+
+<!-- for (p in c("angiosperm", "gymnosperm")) { -->
+
+<!--   print(paste0("Fit for ", p, "...")) -->
+
+<!--   data_crown_tmp <- data_crown %>% -->
+<!--     dplyr::filter(leaf_group == p) -->
+
+<!--   init_par_cdepth <- coefficients(lm(log(cdepth_m) ~ log(dbh_cm), data_crown_tmp)) -->
+
+<!--   mod_cdepth <- nlme::gnls( -->
+<!--     cdepth_m ~ (a1 + a3 * batot_m2ha) * (dbh_cm ^ a2), -->
+<!--     data = data_crown_tmp, -->
+<!--     params = list(a1 ~ 1, a2 ~ 1, a3 ~ 1), -->
+<!--     start = c(a1 = exp(init_par_cdepth[1]), a2 = init_par_cdepth[2], a3 = 0), -->
+<!--     control = gnlsControl(maxIter = 1000, tolerance = 0.1, nlsTol = 0.1) -->
+<!--   ) -->
+
+<!--   coefs_cdepth[[p]] <- data.frame(as.list(coefficients(mod_cdepth))) -->
+<!-- } -->
+
+<!-- coefs_cdepth <- coefs_cdepth %>% dplyr::bind_rows(.id = "leaf_group") -->
+<!-- coefs_cdepth -->
+
+
+<!-- data_pred_cdepth <- expand.grid( -->
+<!--   dbh_cm = seq( -->
+<!--     min(data_crown$dbh_cm), max(data_crown$dbh_cm), -->
+<!--     length.out = 100 -->
+<!--   ), -->
+<!--   compet_intensity = c("low", "high"), -->
+<!--   leaf_group = c("angiosperm", "gymnosperm") -->
+<!-- ) %>% -->
+
+<!--   # Set ref modalities for plot -->
+<!--   dplyr::mutate( -->
+<!--     batot_m2ha = ifelse(compet_intensity == "low", -->
+<!--                         batot_m2ha_low, -->
+<!--                         batot_m2ha_high) -->
+<!--   ) %>% -->
+
+<!--   # Estimate mean crown radius -->
+<!--   dplyr::left_join(coefs_cdepth, by = "leaf_group") %>% -->
+<!--   dplyr::mutate(cdepth_m = (a1 + a3 * batot_m2ha) * (dbh_cm ^ a2)) -->
+<!-- ``` -->
+
+
+<!-- # ```{r} -->
+<!-- # ggplot(data_init, aes(y = cdepth_m, x = dbh_cm)) + -->
+<!-- #   facet_grid(shadetol_group~leaf_group) + -->
+<!-- #    -->
+<!-- #   geom_point(mapping = aes(color = batot_m2ha), -->
+<!-- #              alpha = 0.5) + -->
+<!-- #   scale_color_viridis_c(direction = -1) + -->
+<!-- #    -->
+<!-- #   # ggnewscale::new_scale_color() + -->
+<!-- #   # geom_line(data = data_pred_cdepth, -->
+<!-- #   #           mapping = aes(color = compet_intensity), -->
+<!-- #   #           linewidth = 1.1) + -->
+<!-- #   # scale_color_viridis_d() + -->
+<!-- #  -->
+<!-- #   theme_bw() + -->
+<!-- #   xlab("Tree DBH (in cm)") + -->
+<!-- #   ylab("Crown depth (in m)") -->
+<!-- # ``` -->
+<!-- #  -->
+
+
+<!-- ### Mean crown radius -->
+
+<!-- ```{r} -->
+<!-- coefs_rmean <- list("angiosperm" = NULL, "gymnosperm" = NULL) -->
+
+<!-- for (p in c("angiosperm", "gymnosperm")) { -->
+
+<!--   print(paste0("Fit for ", p, "...")) -->
+
+<!--   data_crown_tmp <- data_crown %>% -->
+<!--     dplyr::filter(leaf_group == p) -->
+
+<!--   init_par_rmean <- coefficients(lm(log(rmean_m) ~ log(dbh_cm), data_crown_tmp)) -->
+
+<!--   mod_no_compet <- nlme::gnls( -->
+<!--     rmean_m ~ a1 * (dbh_cm ^ a2), -->
+<!--     data = data_crown_tmp, -->
+<!--     params = list(a1 ~ 1, a2 ~ 1), -->
+<!--     start = c(a1 = exp(init_par_rmean[1]), a2 = init_par_rmean[2]), -->
+<!--     control = gnlsControl(maxIter = 1000, tolerance = 0.1, nlsTol = 0.1) -->
+<!--   ) -->
+
+<!--   mod_compet <- nlme::gnls( -->
+<!--     rmean_m ~ (a1 + a3 * batot_m2ha) * (dbh_cm ^ a2), -->
+<!--     data = data_crown_tmp, -->
+<!--     params = list(a1 ~ 1, a2 ~ 1, a3 ~ 1), -->
+<!--     start = c(a1 = exp(init_par_rmean[1]), a2 = init_par_rmean[2], a3 = 0), -->
+<!--     control = gnlsControl(maxIter = 1000, tolerance = 0.1, nlsTol = 0.1) -->
+<!--   ) -->
+
+<!--   print(anova(mod_no_compet, mod_compet)) -->
+
+<!--   coefs_rmean[[p]] <- data.frame(as.list(coefficients(mod_compet))) -->
+<!-- } -->
+
+<!-- coefs_rmean <- coefs_rmean %>% dplyr::bind_rows(.id = "leaf_group") -->
+<!-- coefs_rmean -->
+
+
+<!-- data_pred_rmean <- expand.grid( -->
+<!--   dbh_cm = seq( -->
+<!--     min(data_crown$dbh_cm), max(data_crown$dbh_cm), -->
+<!--     length.out = 100 -->
+<!--   ), -->
+<!--   compet_intensity = c("low", "high"), -->
+<!--   leaf_group = c("angiosperm", "gymnosperm") -->
+<!-- ) %>% -->
+
+<!--   # Set ref modalities for plot -->
+<!--   dplyr::mutate( -->
+<!--     batot_m2ha = ifelse(compet_intensity == "low", -->
+<!--                         batot_m2ha_low, -->
+<!--                         batot_m2ha_high) -->
+<!--   ) %>% -->
+
+<!--   # Estimate mean crown radius -->
+<!--   dplyr::left_join(coefs_rmean, by = "leaf_group") %>% -->
+<!--   dplyr::mutate(rmean_m = (a1 + a3 * batot_m2ha) * (dbh_cm ^ a2)) -->
+<!-- ``` -->
+
+
+<!-- # ```{r} -->
+<!-- # ggplot(data_init, aes(y = rmean_m, x = dbh_cm)) + -->
+<!-- #   facet_grid(shadetol_group~leaf_group) + -->
+<!-- #    -->
+<!-- #   geom_point(mapping = aes(color = batot_m2ha), -->
+<!-- #              alpha = 0.5) + -->
+<!-- #   scale_color_viridis_c(direction = -1) + -->
+<!-- #    -->
+<!-- #   # ggnewscale::new_scale_color() + -->
+<!-- #   # geom_line(data = data_pred_rmean, -->
+<!-- #   #           mapping = aes(color = compet_intensity), -->
+<!-- #   #           linewidth = 1.1) + -->
+<!-- #   # scale_color_viridis_d() + -->
+<!-- #  -->
+<!-- #   theme_bw() + -->
+<!-- #   xlab("Tree DBH (in cm)") + -->
+<!-- #   ylab("Mean crown radius (in m)") -->
+<!-- # ``` -->
+<!-- #  -->
+<!-- # ### Crown volume -->
+<!-- #  -->
+<!-- # ```{r} -->
+<!-- # ggplot(data_init, aes(y = volume_m3, -->
+<!-- #                       x = dbh_cm, -->
+<!-- #                       color = batot_m2ha)) + -->
+<!-- #   facet_grid(shadetol_group~leaf_group) + -->
+<!-- #   geom_point() + -->
+<!-- #    -->
+<!-- #   theme_bw() + -->
+<!-- #   scale_color_viridis_c(direction = -1) + -->
+<!-- #   xlab("Tree DBH (in cm)") + -->
+<!-- #   ylab("Crown volume (in m)") -->
+<!-- # ``` -->
+
+
+<!-- ## Stand-level consequences on leaf area index -->
+
+<!-- ```{r} -->
+<!-- # --------- Observe effect on LAI  -------- -->
+<!-- data_output_stand %>%  -->
+<!--   dplyr::select(site_name, batot_m2ha,  -->
+<!--                 contains("lai_model"), contains("lai_control")) %>%  -->
+<!--   tidyr::pivot_longer( -->
+<!--     !c(site_name, batot_m2ha), -->
+<!--     names_pattern = "lai_(.*)_(.*)", -->
+<!--     names_to = c("lad_model", "var"), -->
+<!--     values_to = "lai_m2m2" -->
+<!--   ) %>%  -->
+<!--   tidyr::pivot_wider( -->
+<!--     names_from = "var", -->
+<!--     values_from = "lai_m2m2" -->
+<!--   ) %>%  -->
+
+<!--   dplyr::left_join(data_compo %>%  -->
+<!--                      dplyr::select(site_name, prop_angio),  -->
+<!--                    by = "site_name") %>%  -->
+<!--   dplyr::filter(lad_model == "model") %>%  -->
+
+<!--   ggplot(aes(y = median, x = batot_m2ha, color = prop_angio)) + -->
+<!--   geom_pointrange(aes(ymin = lower, ymax = upper)) + -->
+<!--   geom_smooth(method = "lm", formula = y~x) + -->
+
+<!--   xlab("Total basal area (in m2/ha)") + -->
+<!--   ylab("Stand leaf area index (in m2/m2)") + -->
+
+<!--   theme_bw() + -->
+<!--   theme(legend.position = "right", -->
+<!--         plot.title = element_text(hjust = 0.5), -->
+<!--         plot.subtitle = element_text(hjust = 0.5)) + -->
+<!--   scale_color_viridis_c(direction = -1) -->
+<!-- ``` -->
+
+
+
+<!-- ## Stand-level consequences on mean PACL -->
+
+<!-- ```{r} -->
+<!-- # data_output_light_stand %>% -->
+<!-- #   dplyr::left_join(data_output_stand %>% -->
+<!-- #                      dplyr::select(site = site_name, batot_m2ha), -->
+<!-- #                    by = "site") %>% -->
+<!-- #   dplyr::select(site, batot_m2ha, -->
+<!-- #                 contains("pacl_mean")) %>% -->
+<!-- #   tidyr::pivot_longer( -->
+<!-- #     !c(site, batot_m2ha), -->
+<!-- #     names_pattern = "pacl_mean_(.*)_(.*)", -->
+<!-- #     names_to = c("var", "lad_model"), -->
+<!-- #     values_to = "pacl_mean" -->
+<!-- #   ) %>% -->
+<!-- #   tidyr::pivot_wider( -->
+<!-- #     names_from = "var", -->
+<!-- #     values_from = "pacl_mean" -->
+<!-- #   ) %>% -->
+<!-- #  -->
+<!-- #   ggplot(aes(y = median, x = batot_m2ha, color = lad_model)) + -->
+<!-- #   geom_pointrange(aes(ymin = lower, ymax = upper)) + -->
+<!-- #   geom_smooth(method = "lm") + -->
+<!-- #  -->
+<!-- #   xlab("Total basal area (in m2/ha)") + -->
+<!-- #   ylab("Mean proportion of above canopy light PACL") + -->
+<!-- #  -->
+<!-- #   theme_bw() + -->
+<!-- #   theme(legend.position = "top", -->
+<!-- #         plot.title = element_text(hjust = 0.5), -->
+<!-- #         plot.subtitle = element_text(hjust = 0.5)) -->
+<!-- ``` -->

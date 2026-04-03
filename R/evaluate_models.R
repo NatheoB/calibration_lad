@@ -12,7 +12,7 @@ evaluate_models <- function(models_summary_pointwise) {
                             names_transform = as.numeric) %>% 
         dplyr::mutate(
           id_model = .x$id_model,
-          i_chain = .x$i_chain,
+          i_rep = .x$i_rep,
           .before = iteration
         )
     )
@@ -20,7 +20,7 @@ evaluate_models <- function(models_summary_pointwise) {
   evaluation_indicators <- data_residuals %>% 
     purrr::map(
        ~.x %>% 
-        dplyr::group_by(id_model, i_chain, iteration) %>% 
+        dplyr::group_by(id_model, i_rep, iteration) %>% 
         dplyr::summarise(
           MAE = mean(abs(residuals)),
           RMSE = sqrt(mean(residuals^2))

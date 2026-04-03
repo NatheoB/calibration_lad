@@ -22,7 +22,7 @@ compare_models <- function(models_summary_pointwise) {
         "WAIC" = waic_result,
         "LOOCV" = loo_result,
         "id_model" = x$id_model,
-        "i_chain" = x$i_chain
+        "i_rep" = x$i_rep
       ))
       
     })
