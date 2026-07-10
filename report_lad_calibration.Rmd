@@ -1,0 +1,1914 @@
+---
+title: "LAD calibration"
+output: 
+  html_document:
+    toc: true
+date: "2025-09-24"
+author: "Nathéo BEAUCHAMP"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE
+)
+```
+
+```{r}
+library(targets)
+
+library(dplyr)
+library(tidyr)
+library(data.table)
+
+library(ggplot2)
+library(cowplot)
+library(patchwork)
+library(ggforce)
+library(legendry)
+library(grid)
+library(gridExtra)
+library(ggnewscale)
+library(scales)
+
+library(BayesianTools)
+library(coda)
+library(nlme)
+library(lme4)
+library(merTools)
+library(ggrepel)
+
+library(sf)
+```
+
+
+```{r}
+load("output/calib/outmods_20260605_localCompet_newSensorsFilter_continuousShadetol.RData")
+load("output/comparison/outcomp_20260605_localCompet_newSensorsFilter_continuousShadetol.RData")
+load("output/analysis/outanalysis_20260605_localCompet_newSensorsFilter_continuousShadetol.Rdata")
+```
+
+```{r}
+tar_load(data_stands)
+tar_load(init_db)
+```
+
+```{r}
+scale_shadetol <- function(x) {
+  
+  mean_shadetol <- output_models_list$setup$`6`$shadetol_mean
+  sd_shadetol <- output_models_list$setup$`6`$shadetol_sd
+  
+  (x - mean_shadetol) / sd_shadetol
+}
+
+scale_dbh <- function(x) {
+  
+  mean_dbh <- output_models_list$setup$`6`$dbh_mean
+  sd_dbh <- output_models_list$setup$`6`$dbh_sd
+  
+  (x - mean_dbh) / sd_dbh
+}
+
+scale_compet_batot <- function(x) {
+  
+  mean_compet <- output_models_list$setup$`4`$compet_mean
+  sd_compet <- output_models_list$setup$`4`$compet_mean
+  
+  (x - mean_compet) / sd_compet
+}
+
+scale_compet_bal <- function(x) {
+  
+  mean_compet <- output_models_list$setup$`5`$compet_mean
+  sd_compet <- output_models_list$setup$`5`$compet_mean
+  
+  (x - mean_compet) / sd_compet
+}
+
+scale_compet_rci <- function(x) {
+  
+  mean_compet <- output_models_list$setup$`6`$compet_mean
+  sd_compet <- output_models_list$setup$`6`$compet_mean
+  
+  (x - mean_compet) / sd_compet
+}
+```
+
+
+# Models definition
+
+```{r}
+print(output_models_list$exp_design)
+
+exp_design_short <- data.frame(
+  id_model = 1:6,
+  str_model = c("control by leaf group", 
+                "+ shade tolerance",
+                "+ interaction dbh",
+                "+ interaction compet BATOT",
+                "+ interaction compet BAL",
+                "+ interaction compet RCI")
+)
+```
+
+
+# Models comparison
+
+## MAE and RMSE
+
+```{r}
+data_eval <- output_comparison_list$evaluation$indicators %>% 
+  dplyr::bind_rows() %>% 
+  dplyr::left_join(exp_design_short, by = "id_model") %>% 
+  dplyr::group_by(i_rep, iteration) %>% 
+  dplyr::mutate(
+    MAE_control  = MAE[id_model == 1],
+    RMSE_control = RMSE[id_model == 1],
+
+    MAE_change  = 100 * (MAE  - MAE_control) / MAE_control,
+    RMSE_change = 100 * (RMSE - RMSE_control) / RMSE_control
+  ) %>% 
+  dplyr::ungroup() %>% 
+  dplyr::group_by(id_model, str_model) %>% 
+  dplyr::summarise(
+    
+    MAE_lower = quantile(MAE, 0.025),
+    MAE_median = median(MAE),
+    MAE_upper = quantile(MAE, 0.975),
+    
+    MAE_change_lower = quantile(MAE_change, 0.025),
+    MAE_change_median = median(MAE_change),
+    MAE_change_upper = quantile(MAE_change, 0.975),
+    
+    RMSE_lower = quantile(RMSE, 0.025),
+    RMSE_median = median(RMSE),
+    RMSE_upper = quantile(RMSE, 0.975),
+    
+    RMSE_change_lower = quantile(RMSE_change, 0.025),
+    RMSE_change_median = median(RMSE_change),
+    RMSE_change_upper = quantile(RMSE_change, 0.975)
+  ) %>% 
+  dplyr::arrange(id_model)
+
+data_eval
+```
+
+
+```{r}
+mae_density <- output_comparison_list$evaluation$indicators %>% 
+  dplyr::bind_rows() %>% 
+  dplyr::left_join(exp_design_short, by = "id_model") %>% 
+  
+  ggplot(aes(x = MAE, color = str_model)) +
+  geom_density() +
+  theme_bw() +
+  theme(legend.position = "none") +
+  labs(color = "model ID")
+
+mae_boxplot <- output_comparison_list$evaluation$indicators %>% 
+  dplyr::bind_rows() %>% 
+  dplyr::left_join(exp_design_short, by = "id_model") %>% 
+  
+  ggplot(aes(y = MAE, x = as.factor(id_model), color = str_model)) +
+  geom_boxplot() +
+  theme_bw() +
+  theme(legend.position = "none") +
+  xlab("model ID")
+
+rmse_density <- output_comparison_list$evaluation$indicators %>% 
+  dplyr::bind_rows() %>% 
+  dplyr::left_join(exp_design_short, by = "id_model") %>% 
+  
+  ggplot(aes(x = RMSE, color = str_model)) +
+  geom_density() +
+  theme_bw() +
+  theme(legend.position = "none") +
+  labs(color = "model ID")
+
+rmse_boxplot <- output_comparison_list$evaluation$indicators %>% 
+  dplyr::bind_rows() %>% 
+  dplyr::left_join(exp_design_short, by = "id_model") %>% 
+  
+  ggplot(aes(y = RMSE, x = as.factor(id_model), color = str_model)) +
+  geom_boxplot() +
+  theme_bw() +
+  theme(legend.position = "top", legend.title = element_blank()) +
+  xlab("model ID")
+
+rmse_legend <- cowplot::get_legend(rmse_boxplot)
+rmse_boxplot <- rmse_boxplot + theme(legend.position = "none")
+
+cowplot::plot_grid(
+  rmse_legend,
+  cowplot::plot_grid(mae_density, mae_boxplot, nrow = 1),
+  cowplot::plot_grid(rmse_density, rmse_boxplot, nrow = 1),
+  ncol = 1, rel_heights = c(1, 2, 2)
+)
+```
+
+## LOOIC
+
+```{r}
+data_comp <- output_comparison_list$comparison %>% 
+  purrr::map(~data.frame(
+    id_model = .x$id_model,
+    i_rep = .x$i_rep,
+    looic = .x[["LOOCV"]]["looic", "Estimate"],
+    looic_se = .x[["LOOCV"]]["looic", "SE"],
+    waic = .x[["WAIC"]]["waic", "Estimate"],
+    waic_se = .x[["WAIC"]]["waic", "SE"]
+  )) %>% 
+  dplyr::bind_rows() %>% 
+  dplyr::left_join(exp_design_short, by = "id_model") %>% 
+  dplyr::arrange(waic) %>% 
+  dplyr::mutate(
+    looic_lower = looic - 1.96 * looic_se,
+    looic_upper = looic + 1.96 * looic_se,
+    waic_lower = waic - 1.96 * waic_se,
+    waic_upper = waic + 1.96 * waic_se,
+    
+    delta_looic = looic - looic[id_model == 1],
+    delta_waic = waic - waic[id_model == 1]
+  ) %>% 
+  
+  dplyr::arrange(id_model)
+
+data_comp
+```
+
+```{r}
+waic_boxplot <- ggplot(data_comp, aes(y = waic, x = id_model, color = str_model)) +
+  geom_point() +
+  geom_pointrange(aes(ymin = waic_lower, ymax = waic_upper)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  xlab("model ID") +
+  ylab("WAIC")
+
+looic_boxplot <- ggplot(data_comp, aes(y = looic, x = id_model, color = str_model)) +
+  geom_point() +
+  geom_pointrange(aes(ymin = looic_lower, ymax = looic_upper)) +
+  theme_bw() +
+  theme(legend.position = "top", legend.title = element_blank()) +
+  xlab("model ID") +
+  ylab("LOOIC")
+
+looic_legend <- cowplot::get_legend(looic_boxplot)
+looic_boxplot <- looic_boxplot + theme(legend.position = "none")
+
+cowplot::plot_grid(
+  looic_legend,
+  cowplot::plot_grid(waic_boxplot, looic_boxplot, nrow = 1),
+  ncol = 1, rel_heights = c(1, 4)
+)
+```
+
+
+
+# Models convergence
+
+
+
+# Prediciton of LAD
+
+## Model 1: by leaf group
+
+```{r}
+output_analysis_list$output_params$`2` %>% 
+      dplyr::select(id_set, 
+                    p_intercept.broad, p_intercept.needle
+                    ) %>% 
+      tidyr::pivot_longer(!id_set, names_to = c("param", "leaf_group"), names_sep = "\\.") %>% 
+  
+  ggplot(aes(x = value, color = leaf_group)) +
+  facet_wrap(~param, scales = "free") +
+  geom_density() +
+  theme_bw()
+```
+
+```{r}
+output_analysis_list$output_params$`1` %>% 
+  dplyr::mutate(
+    lad_broad = exp(p_intercept.broad),
+    lad_needle = exp(p_intercept.needle)
+  ) %>% 
+  dplyr::select(id_set, lad_broad, lad_needle) %>% 
+  tidyr::pivot_longer(!id_set, 
+                      names_to = "leaf_group", 
+                      values_to = "lad",
+                      names_prefix = "lad_") %>% 
+  
+  ggplot(aes(y = lad, x = leaf_group)) +
+  geom_boxplot() +
+  theme_bw() +
+  xlab("Type of leaves") +
+  ylab("LAD (m2/m3)")
+```
+
+## Model 2: consider species shade tolerance
+
+```{r}
+output_analysis_list$output_params$`2` %>% 
+      dplyr::select(id_set, 
+                    p_intercept.broad, p_intercept.needle, 
+                    p_shadetol.broad, p_shadetol.needle
+                    ) %>% 
+      tidyr::pivot_longer(!id_set, names_to = c("param", "leaf_group"), names_sep = "\\.") %>% 
+  
+  ggplot(aes(x = value, color = leaf_group)) +
+  facet_wrap(~param, scales = "free") +
+  geom_density() +
+  geom_vline(xintercept = 0, type = "dotted") +
+  theme_bw()
+```
+
+
+
+
+```{r}
+expand.grid(
+  id_set = unique(output_analysis_list$output_params$`2`$id_set),
+  leaf_group = c("needle", "broad"),
+  shadetol = seq(1, 5, 0.1)
+) %>% 
+  dplyr::mutate(shadetol_scaled = scale_shadetol(shadetol)) %>% 
+  dplyr::left_join(
+    
+    output_analysis_list$output_params$`2` %>% 
+      dplyr::select(id_set, p_intercept.broad, p_intercept.needle, 
+                    p_shadetol.broad, p_shadetol.needle) %>% 
+      tidyr::pivot_longer(!id_set, names_to = c(".value", "leaf_group"), names_sep = "\\."),
+    
+    by = c("id_set", "leaf_group")
+    
+  ) %>% 
+  
+  # Predict LAD
+  dplyr::mutate(
+    lad = exp(p_intercept + shadetol_scaled * p_shadetol)
+  ) %>% 
+  
+  # Compute summary statistics
+  dplyr::group_by(leaf_group, shadetol) %>% 
+  dplyr::summarise(
+    lad_lower = quantile(lad, 0.025),
+    lad_median = median(lad),
+    lad_upper = quantile(lad, 0.975)
+  ) %>% 
+  
+  ggplot(aes(y = lad_median, x = shadetol, color = leaf_group)) +
+  
+  geom_line() +
+  geom_ribbon(aes(ymin = lad_lower, ymax = lad_upper,
+                  fill = leaf_group),
+              color = NA,
+              alpha = 0.2) +
+  theme_bw() +
+  xlab("Species shade tolerance") +
+  ylab("LAD (m2/m3)") +
+  labs(color = "Type of leaves", fill = "Type of leaves")
+```
+
+## Model 3: add interaction with tree DBH
+
+```{r}
+output_analysis_list$output_params$`3` %>% 
+      dplyr::select(id_set, 
+                    p_intercept.broad, p_intercept.needle, 
+                    p_shadetol.broad, p_shadetol.needle,
+                    p_dbh.broad, p_dbh.needle,
+                    p_shadetolXdbh.broad, p_shadetolXdbh.needle
+                    ) %>% 
+      tidyr::pivot_longer(!id_set, names_to = c("param", "leaf_group"), names_sep = "\\.") %>% 
+  
+  ggplot(aes(x = value, color = leaf_group)) +
+  facet_wrap(~param, scales = "free") +
+  geom_density() +
+  geom_vline(xintercept = 0, type = "dotted") +
+  theme_bw()
+```
+
+```{r}
+expand.grid(
+  id_set = unique(output_analysis_list$output_params$`3`$id_set),
+  leaf_group = c("needle", "broad"),
+  shadetol_group = c("shade intolerant", "shade tolerant"),
+  dbh_cm = 10:75
+) %>% 
+  dplyr::mutate(
+    shadetol = ifelse(shadetol_group == "shade intolerant", 2, 4.5),
+    shadetol_scaled = scale_shadetol(shadetol),
+    dbh_scaled = scale_dbh(dbh_cm)
+  ) %>% 
+  dplyr::left_join(
+    
+    output_analysis_list$output_params$`3` %>% 
+      dplyr::select(id_set, 
+                    p_intercept.broad, p_intercept.needle, 
+                    p_shadetol.broad, p_shadetol.needle,
+                    p_dbh.broad, p_dbh.needle,
+                    p_shadetolXdbh.broad, p_shadetolXdbh.needle
+                    ) %>% 
+      tidyr::pivot_longer(!id_set, names_to = c(".value", "leaf_group"), names_sep = "\\."),
+    
+    by = c("id_set", "leaf_group")
+    
+  ) %>% 
+  
+  # Predict LAD
+  dplyr::mutate(
+    lad = exp(p_intercept + 
+                shadetol_scaled * p_shadetol + 
+                dbh_scaled * p_dbh + 
+                shadetol_scaled * dbh_scaled * p_shadetolXdbh)
+  ) %>% 
+  
+  # Compute summary statistics
+  dplyr::group_by(leaf_group, shadetol_group, dbh_cm) %>% 
+  dplyr::summarise(
+    lad_lower = quantile(lad, 0.025),
+    lad_median = median(lad),
+    lad_upper = quantile(lad, 0.975)
+  ) %>% 
+  
+  ggplot(aes(y = lad_median, x = dbh_cm, color = leaf_group)) +
+  facet_wrap(~shadetol_group) +
+  geom_line() +
+  geom_ribbon(aes(ymin = lad_lower,
+                  ymax = lad_upper,
+                  fill = leaf_group),
+              color = NA,
+              alpha = 0.2) +
+  theme_bw() +
+  xlab("Tree DBH (cm)") +
+  ylab("LAD (m2/m3)") +
+  labs(color = "Type of leaves", fill = "Type of leaves")
+```
+
+## Models 4/5/6: add interaction with local competition
+
+### Model 4: total basal area BATOT
+
+```{r}
+output_analysis_list$output_params$`4` %>% 
+      dplyr::select(id_set, 
+                    p_intercept.broad, p_intercept.needle, 
+                    p_shadetol.broad, p_shadetol.needle,
+                    p_dbh.broad, p_dbh.needle,
+                    p_compet.broad, p_compet.needle,
+                    p_shadetolXdbh.broad, p_shadetolXdbh.needle,
+                    p_shadetolXcompet.broad, p_shadetolXcompet.needle,
+                    p_dbhXcompet.broad, p_dbhXcompet.needle,
+                    p_shadetolXdbhXcompet.broad, p_shadetolXdbhXcompet.needle
+      ) %>% 
+      tidyr::pivot_longer(!id_set, names_to = c("param", "leaf_group"), names_sep = "\\.") %>% 
+  
+  ggplot(aes(x = value, color = leaf_group)) +
+  facet_wrap(~param, scales = "free") +
+  geom_density() +
+  geom_vline(xintercept = 0, type = "dotted") +
+  theme_bw()
+```
+
+```{r}
+expand.grid(
+  id_set = unique(output_analysis_list$output_params$`4`$id_set),
+  leaf_group = c("needle", "broad"),
+  shadetol_group = c("shade intolerant", "shade tolerant"),
+  dbh_cm = 10:75,
+  compet_intensity = c("open", "dense")
+) %>% 
+  dplyr::mutate(
+    shadetol = ifelse(shadetol_group == "shade intolerant", 2, 4.5),
+    shadetol_scaled = scale_shadetol(shadetol),
+    dbh_scaled = scale_dbh(dbh_cm),
+    batot = case_match(compet_intensity, "open" ~ 15, "dense" ~ 45),
+    batot_scaled = scale_compet_batot(batot)
+  ) %>% 
+  dplyr::left_join(
+    
+    output_analysis_list$output_params$`4` %>% 
+      dplyr::select(id_set, 
+                    p_intercept.broad, p_intercept.needle, 
+                    p_shadetol.broad, p_shadetol.needle,
+                    p_dbh.broad, p_dbh.needle,
+                    p_compet.broad, p_compet.needle,
+                    p_shadetolXdbh.broad, p_shadetolXdbh.needle,
+                    p_shadetolXcompet.broad, p_shadetolXcompet.needle,
+                    p_dbhXcompet.broad, p_dbhXcompet.needle,
+                    p_shadetolXdbhXcompet.broad, p_shadetolXdbhXcompet.needle
+                    ) %>% 
+      tidyr::pivot_longer(!id_set, names_to = c(".value", "leaf_group"), names_sep = "\\."),
+    
+    by = c("id_set", "leaf_group")
+    
+  ) %>% 
+  
+  # Predict LAD
+  dplyr::mutate(
+    lad = exp(p_intercept + 
+                shadetol_scaled * p_shadetol + 
+                dbh_scaled * p_dbh + 
+                batot_scaled * p_compet +
+                shadetol_scaled * dbh_scaled * p_shadetolXdbh +
+                shadetol_scaled * batot_scaled * p_shadetolXcompet +
+                dbh_scaled * batot_scaled * p_dbhXcompet +
+                shadetol_scaled * dbh_scaled * batot_scaled * p_shadetolXdbhXcompet)
+  ) %>% 
+  
+  # Compute summary statistics
+  dplyr::group_by(leaf_group, shadetol_group, dbh_cm, compet_intensity) %>% 
+  dplyr::summarise(
+    lad_lower = quantile(lad, 0.025),
+    lad_median = median(lad),
+    lad_upper = quantile(lad, 0.975)
+  ) %>% 
+  
+  ggplot(aes(y = lad_median, x = dbh_cm, color = compet_intensity)) +
+  facet_wrap(leaf_group~shadetol_group, scales = "free_y") +
+  geom_line() +
+  geom_ribbon(aes(ymin = lad_lower,
+                  ymax = lad_upper,
+                  fill = compet_intensity),
+              color = NA,
+              alpha = 0.2) +
+  theme_bw() +
+  xlab("Tree DBH (cm)") +
+  ylab("LAD (m2/m3)") +
+  labs(color = "Competition intensity")
+```
+
+### Model 5: basal area of larger trees BAL
+
+```{r}
+output_analysis_list$output_params$`5` %>% 
+      dplyr::select(id_set, 
+                    p_intercept.broad, p_intercept.needle, 
+                    p_shadetol.broad, p_shadetol.needle,
+                    p_dbh.broad, p_dbh.needle,
+                    p_compet.broad, p_compet.needle,
+                    p_shadetolXdbh.broad, p_shadetolXdbh.needle,
+                    p_shadetolXcompet.broad, p_shadetolXcompet.needle,
+                    p_dbhXcompet.broad, p_dbhXcompet.needle,
+                    p_shadetolXdbhXcompet.broad, p_shadetolXdbhXcompet.needle
+      ) %>% 
+      tidyr::pivot_longer(!id_set, names_to = c("param", "leaf_group"), names_sep = "\\.") %>% 
+  
+  ggplot(aes(x = value, color = leaf_group)) +
+  facet_wrap(~param, scales = "free") +
+  geom_density() +
+  geom_vline(xintercept = 0, type = "dotted") +
+  theme_bw()
+```
+
+
+```{r}
+expand.grid(
+  id_set = unique(output_analysis_list$output_params$`5`$id_set),
+  leaf_group = c("needle", "broad"),
+  shadetol_group = c("shade intolerant", "shade tolerant"),
+  dbh_cm = 10:75,
+  compet_status = c("dominant", "suppressed")
+) %>% 
+  dplyr::mutate(
+    shadetol = ifelse(shadetol_group == "shade intolerant", 2, 4.5),
+    shadetol_scaled = scale_shadetol(shadetol),
+    dbh_scaled = scale_dbh(dbh_cm),
+    bal = case_match(compet_status, "dominant" ~ 0, "suppressed" ~ 30),
+    bal_scaled = scale_compet_bal(bal)
+  ) %>% 
+  dplyr::left_join(
+    
+    output_analysis_list$output_params$`5` %>% 
+      dplyr::select(id_set, 
+                    p_intercept.broad, p_intercept.needle, 
+                    p_shadetol.broad, p_shadetol.needle,
+                    p_dbh.broad, p_dbh.needle,
+                    p_compet.broad, p_compet.needle,
+                    p_shadetolXdbh.broad, p_shadetolXdbh.needle,
+                    p_shadetolXcompet.broad, p_shadetolXcompet.needle,
+                    p_dbhXcompet.broad, p_dbhXcompet.needle,
+                    p_shadetolXdbhXcompet.broad, p_shadetolXdbhXcompet.needle
+                    ) %>% 
+      tidyr::pivot_longer(!id_set, names_to = c(".value", "leaf_group"), names_sep = "\\."),
+    
+    by = c("id_set", "leaf_group")
+    
+  ) %>% 
+  
+  # Predict LAD
+  dplyr::mutate(
+    lad = exp(p_intercept + 
+                shadetol_scaled * p_shadetol + 
+                dbh_scaled * p_dbh + 
+                bal_scaled * p_compet +
+                shadetol_scaled * dbh_scaled * p_shadetolXdbh +
+                shadetol_scaled * bal_scaled * p_shadetolXcompet +
+                dbh_scaled * bal_scaled * p_dbhXcompet +
+                shadetol_scaled * dbh_scaled * bal_scaled * p_shadetolXdbhXcompet)
+  ) %>% 
+  
+  # Compute summary statistics
+  dplyr::group_by(leaf_group, shadetol_group, dbh_cm, compet_status) %>% 
+  dplyr::summarise(
+    lad_lower = quantile(lad, 0.025),
+    lad_median = median(lad),
+    lad_upper = quantile(lad, 0.975)
+  ) %>% 
+  
+  ggplot(aes(y = lad_median, x = dbh_cm, color = compet_status)) +
+  facet_wrap(leaf_group~shadetol_group, scales = "free_y") +
+  geom_line() +
+  geom_ribbon(aes(ymin = lad_lower,
+                  ymax = lad_upper,
+                  fill = compet_status),
+              color = NA,
+              alpha = 0.2) +
+  theme_bw() +
+  xlab("Tree DBH (cm)") +
+  ylab("LAD (m2/m3)") +
+  labs(color = "Competition status")
+```
+
+
+### Model 6: light-based index RCI
+
+```{r}
+output_analysis_list$output_params$`6` %>% 
+      dplyr::select(id_set, 
+                    p_intercept.broad, p_intercept.needle, 
+                    p_shadetol.broad, p_shadetol.needle,
+                    p_dbh.broad, p_dbh.needle,
+                    p_compet.broad, p_compet.needle,
+                    p_shadetolXdbh.broad, p_shadetolXdbh.needle,
+                    p_shadetolXcompet.broad, p_shadetolXcompet.needle,
+                    p_dbhXcompet.broad, p_dbhXcompet.needle,
+                    p_shadetolXdbhXcompet.broad, p_shadetolXdbhXcompet.needle
+      ) %>% 
+      tidyr::pivot_longer(!id_set, names_to = c("param", "leaf_group"), names_sep = "\\.") %>% 
+  
+  ggplot(aes(x = value, color = leaf_group)) +
+  facet_wrap(~param, scales = "free") +
+  geom_density() +
+  geom_vline(xintercept = 0, type = "dotted") +
+  theme_bw()
+```
+
+```{r}
+expand.grid(
+  id_set = unique(output_analysis_list$output_params$`6`$id_set),
+  leaf_group = c("needle", "broad"),
+  shadetol_group = c("shade intolerant", "shade tolerant"),
+  dbh_cm = 10:75,
+  compet_status = c("dominant", "suppressed")
+) %>% 
+  dplyr::mutate(
+    shadetol = ifelse(shadetol_group == "shade intolerant", 2, 4.5),
+    shadetol_scaled = scale_shadetol(shadetol),
+    dbh_scaled = scale_dbh(dbh_cm),
+    rci = case_match(compet_status, "dominant" ~ 0.4, "suppressed" ~ 1),
+    rci_scaled = scale_compet_rci(rci)
+  ) %>% 
+  dplyr::left_join(
+    
+    output_analysis_list$output_params$`6` %>% 
+      dplyr::select(id_set, 
+                    p_intercept.broad, p_intercept.needle, 
+                    p_shadetol.broad, p_shadetol.needle,
+                    p_dbh.broad, p_dbh.needle,
+                    p_compet.broad, p_compet.needle,
+                    p_shadetolXdbh.broad, p_shadetolXdbh.needle,
+                    p_shadetolXcompet.broad, p_shadetolXcompet.needle,
+                    p_dbhXcompet.broad, p_dbhXcompet.needle,
+                    p_shadetolXdbhXcompet.broad, p_shadetolXdbhXcompet.needle
+                    ) %>% 
+      tidyr::pivot_longer(!id_set, names_to = c(".value", "leaf_group"), names_sep = "\\."),
+    
+    by = c("id_set", "leaf_group")
+    
+  ) %>% 
+  
+  # Predict LAD
+  dplyr::mutate(
+    lad = exp(p_intercept + 
+                shadetol_scaled * p_shadetol + 
+                dbh_scaled * p_dbh + 
+                rci_scaled * p_compet +
+                shadetol_scaled * dbh_scaled * p_shadetolXdbh +
+                shadetol_scaled * rci_scaled * p_shadetolXcompet +
+                dbh_scaled * rci_scaled * p_dbhXcompet +
+                shadetol_scaled * dbh_scaled * rci_scaled * p_shadetolXdbhXcompet)
+  ) %>% 
+  
+  # Compute summary statistics
+  dplyr::group_by(leaf_group, shadetol_group, dbh_cm, compet_status) %>% 
+  dplyr::summarise(
+    lad_lower = quantile(lad, 0.025),
+    lad_median = median(lad),
+    lad_upper = quantile(lad, 0.975)
+  ) %>% 
+  
+  ggplot(aes(y = lad_median, x = dbh_cm, color = compet_status)) +
+  facet_wrap(leaf_group~shadetol_group, scales = "free_y") +
+  geom_line() +
+  geom_ribbon(aes(ymin = lad_lower,
+                  ymax = lad_upper,
+                  fill = compet_status),
+              color = NA,
+              alpha = 0.2) +
+  theme_bw() +
+  xlab("Tree DBH (cm)") +
+  ylab("LAD (m2/m3)") +
+  labs(color = "Competition status", fill = "Competition status")
+```
+
+
+## Prediction with the RCI model
+
+```{r}
+cols <- c(
+  "Shade-intolerant" = "#E69F00",
+  "Shade-tolerant"   = "#0072B2"
+)
+
+fills <- cols
+
+data_pred <- expand.grid(
+  id_set = unique(output_analysis_list$output_params$`6`$id_set),
+  leaf_group = c("needle", "broad"),
+  shadetol_group = c("shade intolerant", "shade tolerant"),
+  dbh_cm = 10:75,
+  compet_status = c("dominant", "suppressed")
+) %>%
+  mutate(
+    shadetol = ifelse(shadetol_group == "shade intolerant", 2, 4.5),
+    shadetol_scaled = scale_shadetol(shadetol),
+    dbh_scaled = scale_dbh(dbh_cm),
+    rci = case_match(
+      compet_status,
+      "dominant" ~ 0.4,
+      "suppressed" ~ 1
+    ),
+    rci_scaled = scale_compet_rci(rci)
+  ) %>%
+
+  left_join(
+
+    output_analysis_list$output_params$`6` %>%
+      select(
+        id_set,
+        p_intercept.broad, p_intercept.needle,
+        p_shadetol.broad, p_shadetol.needle,
+        p_dbh.broad, p_dbh.needle,
+        p_compet.broad, p_compet.needle,
+        p_shadetolXdbh.broad, p_shadetolXdbh.needle,
+        p_shadetolXcompet.broad, p_shadetolXcompet.needle,
+        p_dbhXcompet.broad, p_dbhXcompet.needle,
+        p_shadetolXdbhXcompet.broad, p_shadetolXdbhXcompet.needle
+      ) %>%
+      pivot_longer(
+        !id_set,
+        names_to = c(".value", "leaf_group"),
+        names_sep = "\\."
+      ),
+
+    by = c("id_set", "leaf_group")
+
+  ) %>%
+
+  mutate(
+
+    lad = exp(
+      p_intercept +
+        shadetol_scaled * p_shadetol +
+        dbh_scaled * p_dbh +
+        rci_scaled * p_compet +
+        shadetol_scaled * dbh_scaled * p_shadetolXdbh +
+        shadetol_scaled * rci_scaled * p_shadetolXcompet +
+        dbh_scaled * rci_scaled * p_dbhXcompet +
+        shadetol_scaled * dbh_scaled * rci_scaled * p_shadetolXdbhXcompet
+    )
+
+  ) %>%
+
+  group_by(
+    leaf_group,
+    shadetol_group,
+    dbh_cm,
+    compet_status
+  ) %>%
+
+  summarise(
+
+    lad_lower = quantile(lad, 0.025),
+    lad_median = median(lad),
+    lad_upper = quantile(lad, 0.975),
+
+    .groups = "drop"
+
+  ) %>%
+
+  mutate(
+
+    leaf_group = factor(
+      leaf_group,
+      levels = c("needle", "broad"),
+      labels = c("Needle-leaved", "Broad-leaved")
+    ),
+
+    shadetol_group = factor(
+      shadetol_group,
+      levels = c("shade intolerant", "shade tolerant"),
+      labels = c("Shade-intolerant", "Shade-tolerant")
+    )
+
+  )
+
+
+ggplot(
+  data_pred,
+  aes(
+    x = dbh_cm,
+    y = lad_median,
+    colour = shadetol_group,
+    fill = shadetol_group,
+    linetype = compet_status
+  )
+) +
+
+  facet_wrap(
+    ~ leaf_group,
+    nrow = 1
+  ) +
+
+  geom_ribbon(
+    aes(
+      ymin = lad_lower,
+      ymax = lad_upper
+    ),
+    alpha = 0.12,
+    colour = NA
+  ) +
+
+  geom_line(
+    linewidth = 1.0
+  ) +
+
+  scale_colour_manual(values = cols) +
+  scale_fill_manual(values = fills) +
+
+  scale_linetype_manual(
+    values = c(
+      "dominant" = "solid",
+      "suppressed" = "22"
+    )
+  ) +
+
+  labs(
+    x = "Stem diameter (cm)",
+    y = expression(LAD~(m^2~m^{-3})),
+    colour = "Shade tolerance",
+    fill = "Shade tolerance",
+    linetype = "Competition status"
+  ) +
+
+  theme_classic(base_size = 11) +
+
+  theme(
+    strip.background = element_blank(),
+    strip.text = element_text(
+      face = "bold",
+      size = 11
+    ),
+    panel.spacing = unit(1.2, "lines"),
+    legend.position = "top",
+    legend.box = "vertical",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 10),
+    axis.title = element_text(size = 11),
+    axis.text = element_text(size = 10)
+
+  )
+```
+
+## Effect of competition/dbh on LAD prediction
+
+```{r}
+cols <- c(
+  "Shade-intolerant" = "#E69F00",
+  "Shade-tolerant"   = "#0072B2"
+)
+
+data_compare <- expand.grid(
+  id_set = unique(output_analysis_list$output_params$`6`$id_set),
+  leaf_group = c("needle", "broad"),
+  shadetol_group = c("shade intolerant", "shade tolerant"),
+  dbh_cm = c(10, 40, 70),
+  compet_status = c("dominant", "suppressed")
+) %>%
+  mutate(
+
+    shadetol = ifelse(
+      shadetol_group == "shade intolerant",
+      2,
+      4.5
+    ),
+
+    shadetol_scaled = scale_shadetol(shadetol),
+
+    dbh_scaled = scale_dbh(dbh_cm),
+
+    rci = ifelse(
+      compet_status == "dominant",
+      0.4,
+      1
+    ),
+
+    rci_scaled = scale_compet_rci(rci)
+
+  ) %>%
+
+  left_join(
+
+    output_analysis_list$output_params$`6` %>%
+      select(
+        id_set,
+        p_intercept.broad, p_intercept.needle,
+        p_shadetol.broad, p_shadetol.needle,
+        p_dbh.broad, p_dbh.needle,
+        p_compet.broad, p_compet.needle,
+        p_shadetolXdbh.broad, p_shadetolXdbh.needle,
+        p_shadetolXcompet.broad, p_shadetolXcompet.needle,
+        p_dbhXcompet.broad, p_dbhXcompet.needle,
+        p_shadetolXdbhXcompet.broad,
+        p_shadetolXdbhXcompet.needle
+      ) %>%
+      pivot_longer(
+        !id_set,
+        names_to = c(".value", "leaf_group"),
+        names_sep = "\\."
+      ),
+
+    by = c("id_set", "leaf_group")
+
+  ) %>%
+
+  mutate(
+
+    lad = exp(
+
+      p_intercept +
+
+      shadetol_scaled * p_shadetol +
+      dbh_scaled * p_dbh +
+      rci_scaled * p_compet +
+
+      shadetol_scaled *
+        dbh_scaled *
+        p_shadetolXdbh +
+
+      shadetol_scaled *
+        rci_scaled *
+        p_shadetolXcompet +
+
+      dbh_scaled *
+        rci_scaled *
+        p_dbhXcompet +
+
+      shadetol_scaled *
+        dbh_scaled *
+        rci_scaled *
+        p_shadetolXdbhXcompet
+
+    )
+
+  ) %>%
+
+  group_by(
+    leaf_group,
+    shadetol_group,
+    dbh_cm,
+    compet_status
+  ) %>%
+
+  summarise(
+    lad_lower = quantile(lad, 0.025),
+    lad_median = median(lad),
+    lad_upper = quantile(lad, 0.975),
+    .groups = "drop"
+  ) %>%
+
+  mutate(
+    leaf_group = factor(
+      leaf_group,
+      levels = c("needle", "broad"),
+      labels = c(
+        "Needle-leaved",
+        "Broad-leaved"
+      )
+    ),
+
+    shadetol_group = factor(
+      shadetol_group,
+      levels = c(
+        "shade intolerant",
+        "shade tolerant"
+      ),
+      labels = c(
+        "Shade-intolerant",
+        "Shade-tolerant"
+      )
+    ),
+
+    dbh_class = factor(
+      dbh_cm,
+      levels = c(10, 40, 70),
+      labels = c(
+        "Small tree\n(10 cm)",
+        "Medium tree\n(40cm)",
+        "Large tree\n(70 cm)"
+      )
+    ),
+    
+    compet_status = factor(
+      compet_status,
+      levels = c("suppressed", "dominant"),
+      labels = c(
+        "Suppressed",
+        "Dominant"
+      )
+    )
+  )
+
+
+p2 <- ggplot(
+  data_compare,
+  aes(
+    x = dbh_class,
+    y = lad_median,
+    colour = shadetol_group,
+    shape = compet_status
+  )
+) +
+
+geom_pointrange(
+  aes(
+    ymin = lad_lower,
+    ymax = lad_upper
+  ),
+  position = position_dodge(width = 0.35),
+  linewidth = 0.7
+) +
+
+
+facet_wrap(~leaf_group, nrow = 1) +
+
+scale_colour_manual(values = cols) +
+scale_shape_manual(values = c(16, 1)) +
+
+labs(
+  x = NULL,
+  y = expression(LAD~(m^2~m^{-3})),
+  colour = "Shade tolerance",
+  shape = "Competition"
+) +
+
+
+theme_classic(base_size=11)+
+theme(
+  legend.position="top",
+  legend.box="vertical",
+  strip.background = element_blank(),
+  strip.text = element_text(face="bold")
+)
+
+p2
+```
+
+
+# Crown volume as a mediator for leaf area density
+
+```{r}
+data_volume <- data_stands %>% 
+  purrr::map(~.x$trees) %>% 
+  dplyr::bind_rows(.id = "site") %>% 
+  dplyr::left_join(init_db$plots, by = c("site" = "name"))
+```
+
+## Prediction of crown volume
+
+```{r}
+m0 <- lmer(
+  log(volume_m3) ~ log(dbh_cm)*log(shadetol)*leaf_group +
+    (1 | species) + (1 | origin/site),
+  data = data_volume
+)
+
+m_rci <- lmer(
+  log(volume_m3) ~ log(dbh_cm)*log(rci)*log(shadetol)*leaf_group +
+    (1 | species) + (1 | origin/site),
+  data = data_volume
+)
+
+m_batot <- lmer(
+  log(volume_m3) ~ log(dbh_cm)*log(batot_local_m2ha)*log(shadetol)*leaf_group +
+    (1 | species) + (1 | origin/site),
+  data = data_volume
+)
+
+m_bal <- lmer(
+  log(volume_m3) ~ log(dbh_cm)*log(bal_local_m2ha+0.0001)*log(shadetol)*leaf_group +
+    (1 | species) + (1 | origin/site),
+  data = data_volume
+)
+
+model_comp <- BIC(m0, m_rci, m_batot, m_bal) %>%
+  as.data.frame() %>%
+  mutate(
+    delta_BIC = BIC - min(BIC)
+  ) %>%
+  arrange(BIC)
+
+model_comp
+```
+
+```{r}
+mod_volume <- m_rci
+
+cols <- c(
+  "Shade-intolerant" = "#E69F00",
+  "Shade-tolerant"   = "#0072B2"
+)
+
+pred_grid <- expand.grid(
+  dbh_cm = 10:75,
+  compet_status = c("dominant", "suppressed"),
+  leaf_group = c("needle", "broad"),
+  shadetol_group = c("shade intolerant", "shade tolerant")
+) %>%
+  mutate(
+    rci = ifelse(compet_status == "dominant", 0.4, 1),
+    shadetol = ifelse(shadetol_group == "shade intolerant", 2, 4.5),
+  ) %>% 
+  
+  mutate(
+
+    ## population-level predictions
+    volume_pred = exp(
+      predict(
+        mod_volume,
+        newdata = .,
+        re.form = NA
+      ) +
+      sigma(mod_volume)^2 / 2
+    ),
+
+    leaf_group = factor(
+      leaf_group,
+      levels = c("needle", "broad"),
+      labels = c("Needle-leaved", "Broad-leaved")
+    ),
+
+    shadetol_group = factor(
+      shadetol_group,
+      levels = c("shade intolerant", "shade tolerant"),
+      labels = c("Shade-intolerant", "Shade-tolerant")
+    )
+  )
+
+
+
+ggplot(
+  pred_grid,
+  aes(
+    x = dbh_cm,
+    y = volume_pred,
+    colour = shadetol_group,
+    linetype = compet_status
+  )
+) +
+
+  geom_line(linewidth = 1.1) +
+
+  facet_wrap(
+    ~leaf_group,
+    nrow = 1
+  ) +
+
+  scale_colour_manual(values = cols) +
+
+  scale_linetype_manual(
+    values = c(
+      dominant = "solid",
+      suppressed = "22"
+    )
+  ) +
+
+  labs(
+    x = "Stem diameter (cm)",
+    y = expression("Crown volume (" * m^3 * ")"),
+    colour = "Shade tolerance",
+    linetype = "Competition status"
+  ) +
+
+  theme_classic(base_size = 11) +
+
+  theme(
+    strip.background = element_blank(),
+
+    strip.text = element_text(
+      face = "bold",
+      size = 11
+    ),
+
+    panel.spacing = unit(1.2, "lines"),
+
+    legend.position = "top",
+    legend.box = "vertical",
+
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 10),
+
+    axis.title = element_text(size = 11),
+    axis.text = element_text(size = 10)
+  )
+```
+
+## LAD vs crown volume
+
+```{r}
+predict_lad_site <- function(trees_df, params_df, site_name = NULL) {
+
+  if(!is.null(site_name)) {
+    
+    site_origin <- init_db$plots$origin[init_db$plots$name == site_name]
+    
+    site_effects <- params_df %>%
+      tidyr::pivot_longer(
+        starts_with("p_z_site."),
+        names_to = "site",
+        values_to = "z_site",
+        names_prefix = "p_z_site."
+      ) %>%
+      dplyr::filter(site == site_name)
+    
+    origin_effects <- params_df %>%
+      tidyr::pivot_longer(
+        starts_with("p_z_origin."),
+        names_to = "origin",
+        values_to = "z_origin",
+        names_prefix = "p_z_origin."
+      ) %>%
+      dplyr::filter(origin == site_origin)
+    
+  }
+
+  sp_effects <- params_df %>%
+    tidyr::pivot_longer(
+      starts_with("p_z_sp."),
+      names_to = "species",
+      values_to = "z_sp",
+      names_prefix = "p_z_sp."
+    )
+
+ 
+  fixed_params <- params_df %>%
+    dplyr::select(
+      id_set,
+      contains("sigma"),
+      contains("p_intercept"),
+      contains("p_shadetol"),
+      contains("p_dbh"),
+      contains("p_compet"),
+      contains("p_shadetolX"),
+      contains("p_dbhX"),
+      contains("p_competX")
+    ) %>%
+    tidyr::pivot_longer(
+      !c(id_set, contains("sigma")),
+      names_to = c(".value", "leaf_group"),
+      names_sep = "\\."
+    )
+
+  out <- tidyr::crossing(trees_df, params_df) %>%
+    dplyr::left_join(sp_effects,   by = c("id_set", "species")) %>%
+    dplyr::left_join(fixed_params, by = c("id_set", "leaf_group"))
+  
+  if (!is.null(site_name)) {
+    out <- out %>% 
+      dplyr::mutate(
+      origin = site_origin,
+      site = site_name
+    ) 
+  }
+  
+  out <- out %>% 
+
+    dplyr::mutate(
+
+      shadetol_scaled = scale_shadetol(shadetol),
+      dbh_scaled = scale_dbh(dbh_cm),
+      rci_scaled = scale_compet_rci(rci),
+
+      sp_effect =
+        z_sp * exp(p_sigma_sp_log),
+
+      site_effect = ifelse(is.null(site_name), 0, 
+                           z_origin * exp(p_sigma_origin_log) +
+                             z_site   * exp(p_sigma_site_log)),
+
+      lad = exp(
+        p_intercept +
+          sp_effect + 
+          site_effect +
+          shadetol_scaled * p_shadetol +
+          dbh_scaled * p_dbh +
+          rci_scaled * p_compet +
+          shadetol_scaled * dbh_scaled * p_shadetolXdbh +
+          shadetol_scaled * rci_scaled * p_shadetolXcompet +
+          dbh_scaled * rci_scaled * p_dbhXcompet +
+          shadetol_scaled * dbh_scaled * rci_scaled * p_shadetolXdbhXcompet
+      )
+    )
+
+  # collapse inside stand
+  out %>%
+    dplyr::group_by(id_tree) %>%
+    dplyr::summarise(
+      lad = median(lad),
+      .groups = "drop"
+    )
+}
+```
+
+
+```{r}
+data_lad_per_ind <- purrr::imap(data_stands,
+                                ~predict_lad_site(.x$trees, 
+                                                  output_analysis_list$output_params$`6`)) %>% 
+  dplyr::bind_rows(.id = "site") %>%
+  left_join(
+    data_stands %>%
+      purrr::map(~.x$trees) %>%
+      bind_rows(.id = "site"),
+    by = c("site", "id_tree")
+  ) %>% 
+  dplyr::left_join(init_db$plots, by = c("site" = "name"))
+```
+
+
+```{r}
+plot_df <- data_lad_per_ind %>%
+  filter(!species %in% c("other_gymno", "other_angio")) %>% 
+  dplyr::mutate(species = gsub("_", "\n", species))
+
+species_order <- plot_df %>%
+  dplyr::select(species, shadetol) %>% 
+  dplyr::distinct() %>% 
+  group_by(species) %>%
+  arrange(shadetol) %>% 
+  pull(species)
+
+plot_df <- plot_df %>%
+  mutate(species = factor(species, levels = species_order))
+
+# ---------------------------------------------------------
+# 1. Shared colour scale
+# ---------------------------------------------------------
+rc_scale <- scale_colour_viridis_c(
+  option = "C",
+  direction = -1,
+  guide = guide_colourbar(
+    direction = "horizontal",
+    title.position = "top",
+    title.hjust = 0.5,
+    barwidth = 12,
+    barheight = 0.8
+  )
+)
+
+# ---------------------------------------------------------
+# 2. Needle-leaved plot
+# ---------------------------------------------------------
+p_needle <- plot_df %>% 
+  filter(leaf_group == "needle") %>% 
+  
+  ggplot(aes(
+    x = volume_m3,
+    y = lad,
+    colour = rci
+  )) +
+
+  geom_point(alpha = 0.18, size = 1.1) +
+  facet_wrap(~ species, scales = "free") +
+
+  rc_scale +
+
+  labs(
+    x = expression("Observed crown volume (m"^3*")"),
+    y = expression("Predicted LAD (m"^2*" m"^{-3}*")"),
+    colour = "Competition (RCI)",
+    title = "Needle-leaved species"
+  ) +
+
+  theme_classic(base_size = 11) +
+
+  theme(
+    strip.text = element_text(size = 7, face = "bold"),
+    strip.background = element_blank(),
+    panel.spacing = unit(0.9, "lines"),
+    plot.title = element_text(hjust = 0.5),
+    axis.title = element_text(size = 11, hjust = 0.5),
+    axis.text.y = element_text(size = 9),
+    axis.text.x = element_text(angle = 45, hjust = 0.8, size = 6),
+    legend.position = "top",
+    legend.direction = "horizontal"
+  )
+
+# ---------------------------------------------------------
+# 3. Broad-leaved plot
+# ---------------------------------------------------------
+p_broad <- plot_df %>% 
+  filter(leaf_group == "broad") %>% 
+  
+  ggplot(aes(
+    x = volume_m3,
+    y = lad,
+    colour = rci
+  )) +
+
+  geom_point(alpha = 0.18, size = 1.1) +
+  facet_wrap(~ species, scales = "free") +
+
+  rc_scale +
+
+  labs(
+    x = expression("Observed crown volume (m"^3*")"),
+    y = NULL,
+    colour = "Competition (RCI)",
+    title = "Broad-leaved species"
+  ) +
+
+  theme_classic(base_size = 11) +
+
+  theme(
+    strip.text = element_text(size = 7, face = "bold"),
+    strip.background = element_blank(),
+    panel.spacing = unit(0.9, "lines"),
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5),
+    axis.title = element_text(size = 11),
+    axis.text.y = element_text(size = 9),
+    axis.text.x = element_text(angle = 45, hjust = 0.8, size = 6)
+  )
+
+# ---------------------------------------------------------
+# 4. Get legend
+# ---------------------------------------------------------
+p_legend <- cowplot::get_legend(p_needle)
+p_needle <- p_needle + theme(legend.position = "none")
+
+
+# ---------------------------------------------------------
+# 5. Combine 
+# ---------------------------------------------------------
+cowplot::plot_grid(
+  p_legend,
+  cowplot::plot_grid(
+    p_needle, p_broad, nrow = 1
+  ),
+  rel_heights = c(1, 4),
+  ncol = 1
+)
+``` 
+
+
+# Crown expansion VS leaf packing strategies
+
+```{r}
+#############################################################
+# DATA PREPARATION
+#############################################################
+
+pred_ladXvolume <- expand.grid(
+
+  species = unique(data_volume$species),
+  dbh_cm = c(25, 60),
+  rci = c(0.4, 1)
+
+) %>%
+
+  dplyr::filter(!species %in% c("other_angio", "other_gymno")) %>%
+
+  dplyr::left_join(
+    data_volume %>%
+      dplyr::select(species, leaf_group, shadetol) %>%
+      dplyr::distinct(),
+    by = "species"
+  ) %>%
+
+  dplyr::mutate(
+    id_tree = row_number(),
+    compet_status = ifelse(rci == 0.4, "dominant", "suppressed")
+  ) %>%
+
+  dplyr::left_join(
+    predict_lad_site(., output_analysis_list$output_params$`6`),
+    by = "id_tree"
+  ) %>%
+
+  dplyr::mutate(
+    volume_pred = exp(
+      predict(
+        mod_volume,
+        newdata = .,
+        re.form = ~(1 | species)
+      ) +
+      sigma(mod_volume)^2 / 2
+    )
+  )
+
+#############################################################
+# ARROWS (dominant → suppressed)
+#############################################################
+
+arrows <- pred_ladXvolume %>%
+  dplyr::select(species, dbh_cm, rci, volume_pred, lad) %>%
+  tidyr::pivot_wider(
+    names_from = rci,
+    values_from = c(volume_pred, lad)
+  )
+
+#############################################################
+# PLOT
+#############################################################
+
+ggplot() +
+
+  # -------------------------------------------------------
+  # arrows
+  # -------------------------------------------------------
+  geom_segment(
+    data = arrows,
+    aes(
+      x = volume_pred_0.4,
+      y = lad_0.4,
+      xend = volume_pred_1,
+      yend = lad_1,
+      colour = species
+    ),
+    linewidth = 1,
+    alpha = 0.85,
+    arrow = arrow(length = unit(0.12, "cm"), type = "closed")
+  ) +
+
+  # -------------------------------------------------------
+  # points (shape = DBH, fill = competition, colour = species)
+  # -------------------------------------------------------
+  geom_point(
+    data = pred_ladXvolume,
+    aes(
+      x = volume_pred,
+      y = lad,
+      colour = species,
+      fill = compet_status,
+      shape = factor(dbh_cm)
+    ),
+    size = 3,
+    stroke = 1
+  ) +
+
+  ###########################################################
+  # SHAPE = DBH (circle vs triangle)
+  ###########################################################
+
+  scale_shape_manual(values = c(
+    `25` = 21,   # small tree → circle
+    `60` = 24    # large tree → triangle
+  )) +
+
+  ###########################################################
+  # FILL = competition (dominant vs suppressed)
+  ###########################################################
+
+  scale_fill_manual(values = c(
+    dominant = "white",     # empty symbol
+    suppressed = "black"    # filled symbol
+  )) +
+
+  ###########################################################
+  # KEEP species colour for borders + arrows
+  ###########################################################
+
+  guides(
+    fill = guide_legend(override.aes = list(shape = 21)),
+    colour = guide_legend(override.aes = list(fill = NA))
+  ) +
+
+  ###########################################################
+  # LABELS
+  ###########################################################
+
+  labs(
+    x = expression("Predicted crown volume (" * m^3 * ")"),
+    y = expression("Leaf area density (LAD, m^2 ~ m^{-3})"),
+    colour = "Species",
+    fill = "Competition",
+    shape = "DBH (cm)"
+  ) +
+
+  ###########################################################
+  # THEME
+  ###########################################################
+
+  theme_classic(base_size = 12) +
+
+  theme(
+    legend.position = "top",
+    legend.direction = "horizontal",
+
+    legend.title = element_text(size = 10, face = "bold"),
+    legend.text = element_text(size = 9),
+
+    axis.title = element_text(size = 11),
+    axis.text = element_text(size = 10),
+
+    panel.spacing = unit(1.2, "lines"),
+
+    strip.background = element_blank(),
+
+    legend.box = "vertical"
+  )
+```
+
+# Consequences on tree light interception
+
+```{r}
+out_energy_trees <- rbindlist(lapply(output_analysis_list$output_tree_light, function(x) {
+  cbind(
+    site = x$site_name,
+    id_mod = x$id_mod,
+    x$out_trees
+  )
+}), use.names = TRUE, fill = TRUE) %>% 
+  
+  tidyr::pivot_wider(names_from = "id_mod", values_from = c("e", "epot")) %>% 
+  
+  dplyr::mutate(
+    diff_e = e_2 - e_6,
+    diff_epot = epot_2 - epot_6,
+    ratio_e = e_2 / e_6,
+    ratio_epot = epot_2 / epot_6,
+    ratio_scaled_e = (e_2 - e_6) / e_2,
+    ratio_scaled_epot = (epot_2 - epot_6) / epot_2,
+    logratio_e = log(e_2 / e_6),
+    logratio_epot = log(epot_2 / epot_6),
+  ) %>% 
+  dplyr::group_by(site, id_tree) %>%
+  dplyr::summarise(
+    across(
+      c(diff_e, diff_epot, ratio_e, ratio_epot, ratio_scaled_e, ratio_scaled_epot, logratio_e, logratio_epot),
+      list(
+        mean   = ~mean(.x, na.rm = TRUE),
+        median = ~median(.x, na.rm = TRUE),
+        q025   = ~quantile(.x, 0.025, na.rm = TRUE),
+        q975   = ~quantile(.x, 0.975, na.rm = TRUE)
+      ),
+      .names = "{.col}_{.fn}"
+    )
+  ) %>% 
+  dplyr::left_join(data_volume, by = c("site", "id_tree"))
+```
+
+
+```{r}
+# ---------------------------------------------------------
+# Shared theme
+# ---------------------------------------------------------
+base_theme <- theme_classic(base_size = 11) +
+  theme(
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold", size = 7),
+
+    legend.position = "top",
+    legend.direction = "horizontal",
+    legend.title = element_text(face = "bold", size = 10),
+    legend.text = element_text(size = 9),
+
+    axis.title = element_text(size = 11),
+    axis.text.x = element_text(size = 7, angle = 45, hjust = 0.7),
+    axis.text.y = element_text(size = 8),
+
+    panel.spacing = unit(1, "lines")
+  )
+
+# ---------------------------------------------------------
+# Filter dataset once
+# ---------------------------------------------------------
+df_energy <- out_energy_trees %>%
+  filter(!species %in% c("other_gymno", "other_angio")) %>% 
+  dplyr::mutate(species = gsub("_", "\n", species))
+
+# ---------------------------------------------------------
+# Shared colour scale
+# ---------------------------------------------------------
+rci_scale <- scale_colour_viridis_c(
+  option = "C",
+  direction = -1,
+  name = "Competition (RCI)",
+  guide = guide_colourbar(
+    title.position = "top",
+    title.hjust = 0.5,
+    barwidth = 12,
+    barheight = 0.8
+  )
+)
+
+# ---------------------------------------------------------
+# LEFT PANEL: epot
+# ---------------------------------------------------------
+p_epot <- ggplot(df_energy, aes(
+  x = dbh_cm,
+  y = logratio_epot_median,
+  colour = rci
+)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(alpha = 0.7, size = 1.6) +
+  facet_wrap(~species, scales = "free_y") +
+  rci_scale +
+  labs(
+    x = "DBH (cm)",
+    y = expression("Potential intercepted energy (standardised)"),
+    title = "a) Potential energy (no neighbours)"
+  ) +
+  base_theme
+
+# ---------------------------------------------------------
+# RIGHT PANEL: e
+# ---------------------------------------------------------
+p_e <- ggplot(df_energy, aes(
+  x = dbh_cm,
+  y = logratio_e_median,
+  colour = rci
+)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(alpha = 0.7, size = 1.6) +
+  facet_wrap(~species, scales = "free_y") +
+  rci_scale +
+  labs(
+    x = "DBH (cm)",
+    y = expression("Intercepted energy (standardised)"),
+    title = "b) Realised energy (with competition)"
+  ) +
+  base_theme +
+  theme(legend.position = "none")
+
+# ---------------------------------------------------------
+# COMBINE (legend on top, above both panels)
+# ---------------------------------------------------------
+final_plot <- (p_epot + p_e) +
+  plot_layout(ncol = 2, guides = "collect") &
+  theme(
+    legend.position = "top",
+    legend.box = "horizontal"
+  )
+
+final_plot
+```
+
+
+
+
+```{r}
+out_energy_trees %>% 
+  dplyr::filter(!species %in% c("other_gymno", "other_angio")) %>% 
+  
+  ggplot(aes(y = logratio_epot_median, x = dbh_cm, color = rci)) +
+  facet_wrap(~species, scales = "free_y") +
+  
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  
+  theme_classic() +
+  theme(legend.position = "right") +
+  scale_color_viridis_c(
+    option = "C",
+    direction = -1,
+    guide = guide_colourbar(
+      title.position = "top",
+      title.hjust = 0.5
+    )
+  )
+```
+
+```{r}
+out_energy_trees %>% 
+  dplyr::filter(!species %in% c("other_gymno", "other_angio")) %>% 
+  
+  ggplot(aes(y = logratio_e_median, x = dbh_cm, color = rci)) +
+  facet_wrap(~species, scales = "free_y") +
+  
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  
+  theme_classic() +
+  theme(legend.position = "right") +
+  scale_color_viridis_c(
+    option = "C",
+    direction = -1,
+    guide = guide_colourbar(
+      title.position = "top",
+      title.hjust = 0.5
+    )
+  )
+```
+
+
+# Stand-level consequences on light on the ground
+
+```{r}
+cells_core <- purrr::imap(
+  data_stands,
+  function(stand, stand_name){
+
+    #----------------------------------------
+    # Convert cell centres to 5x5 m polygons
+    #----------------------------------------
+    cell_poly <- stand$cells %>%
+      rowwise() %>%
+      mutate(
+        geometry = list(
+          st_polygon(list(matrix(
+            c(
+              x_center - 2.5, y_center - 2.5,
+              x_center + 2.5, y_center - 2.5,
+              x_center + 2.5, y_center + 2.5,
+              x_center - 2.5, y_center + 2.5,
+              x_center - 2.5, y_center - 2.5
+            ),
+            ncol = 2,
+            byrow = TRUE
+          )))
+        )
+      ) %>%
+      st_as_sf()
+
+    #----------------------------------------
+    # Keep cells intersecting the core polygon
+    #----------------------------------------
+    cell_poly$inside <- lengths(
+      st_intersects(
+        cell_poly,
+        stand$core_polygon$sf
+      )
+    ) > 0
+
+    cell_poly %>%
+      filter(inside) %>%
+      st_drop_geometry() %>%
+      mutate(site = stand_name) %>%
+      select(site, id_cell)
+
+  }
+) %>%
+  bind_rows()
+```
+
+```{r}
+out_energy_cells <- rbindlist(lapply(output_analysis_list$output_tree_light, function(x) {
+  cbind(
+    site = x$site_name,
+    id_mod = x$id_mod,
+    x$out_cells %>% dplyr::select(-e)
+  )
+}), use.names = TRUE, fill = TRUE) %>% 
+  
+  dplyr::right_join(cells_core, by = c("site", "id_cell")) %>%
+  dplyr::select(site, id_set, id_cell, id_mod, pacl) %>%
+  tidyr::pivot_wider(
+    names_from = id_mod,
+    values_from = pacl,
+    names_prefix = "Model_"
+  )
+```
+
+```{r}
+ggplot(out_energy_cells, aes(Model_2, Model_6)) +
+  
+  geom_smooth(aes(colour = site), method = "lm", formula = y~x) +
+  geom_abline(slope = 1, intercept = 0,
+              linetype = "dashed", linewidth = 1) +
+  
+  coord_equal() +
+  
+  labs(
+    x = "PACL with species-specific LAD model",
+    y = "PACL with full LAD model"
+  ) +
+  
+  theme_classic(base_size = 11) +
+  theme(legend.position = "none")
+```
+

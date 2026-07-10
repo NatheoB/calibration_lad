@@ -36,10 +36,13 @@ list(
   
   tar_target(N_SL_THREADS, 8),
   
-  tar_target(N_REPS, 1),
-  tar_target(N_ITERATIONS_PER_REP, 2000),
-  tar_target(N_BURNING_PER_REP, 1500),
-  tar_target(N_SAMPLES_PER_REP, 100),
+  tar_target(N_REPS, 3),
+  tar_target(N_ITERATIONS_PER_REP, 600000),
+  tar_target(N_BURNING_PER_REP, 500000),
+  tar_target(N_SAMPLES_PER_REP, 1000),
+  
+  tar_target(LOCAL_BA_RADIUS, 15),
+  tar_target(CELL_SIZE, 5),
   
   
   # PREPARE CALIBRATION ----
@@ -58,47 +61,54 @@ list(
   
   ## Catch monthly radiation data from PVGIS ----
   tar_target(data_rad, get_radiation_dataset(init_db$plots)),
+  tar_target(data_rad_fp, save_input_rad(data_rad, fp = "data/data_rad.csv")),
+  
+  # tar_target(data_rad, load_radiation_dataset("data/data_rad.csv")),
   
   
   ## Create SamsaRaLight stands from tree inventories ----
   tar_target(data_stands, create_sl_stands(init_db,
                                            data_rad,
-                                           cell_size = 5,
+                                           cell_size = CELL_SIZE,
+                                           local_ba_radius = LOCAL_BA_RADIUS,
                                            seed = SEED)),
 
+  tar_target(site_names, names(data_stands)),
+  
   
   ## Plot the calibration data ----
-  tar_target(plots_stands_fp, plot_stands(data_stands,
-                                          data_species = init_db$species,
-                                          output_plots_fp = "output/initial_sites")),
+  # tar_target(plots_stands_fp, plot_stands(data_stands,
+  #                                         data_species = init_db$species,
+  #                                         output_plots_fp = "output/initial_sites")),
   
   
   
   # PRELIMINARY ANALYSIS ----
   # simple minimization of residuals
-  tar_target(lads_method1, seq(0.01, 5, by = 0.01)),
-  tar_target(lad_convergence_threshold, 3),
-
-  
-  ## Estimate PACL given site LAD ----
-  tar_target(output_pacl_method1, get_sensors_pacl_sitespecificLAD(lads_method1,
-                                                                   data_stands,
-                                                                   data_rad)),
-
-  ## Estimate punobs per sensor ----
-  tar_target(output_punobs, get_sensors_punobs(data_stands,
-                                               data_rad)),
-  
-  ## Optimize LAD per site ----
-  tar_target(output_lad_method1, fit_lad_method1(output_pacl_method1,
-                                                 lad_convergence_threshold,
-                                                 data_stands,
-                                                 output_punobs,
-                                                 "output/residuals_sensors")),
+  # tar_target(lads_method1, seq(0.01, 5, by = 0.01)),
+  # tar_target(lad_convergence_threshold, 3),
+  # 
+  # 
+  # ## Estimate PACL given site LAD ----
+  # tar_target(output_pacl_method1, get_sensors_pacl_sitespecificLAD(lads_method1,
+  #                                                                  data_stands,
+  #                                                                  data_rad)),
+  # 
+  # ## Optimize LAD per site ----
+  # tar_target(output_lad_method1, fit_lad_method1(output_pacl_method1,
+  #                                                lad_convergence_threshold,
+  #                                                data_stands,
+  #                                                "output/residuals_sensors")),
 
 
   # BAYESIAN CALIBRATION ----
 
+  ## Filter sensors ----
+  tar_target(sensors_punobs, filter_sensors(data_stands, 
+                                            data_rad,
+                                            min_pacl = 0.05,
+                                            max_punobs = 0.75)),
+  
   ## Create the experimental design ----
   tar_target(exp_design, create_experimental_design(N_ITERATIONS_PER_REP)),
   tar_target(id_models, exp_design$id_model),
@@ -109,7 +119,7 @@ list(
                                              init_db$plots,
                                              data_stands,
                                              data_rad,
-                                             output_lad_method1,
+                                             sensors_punobs,
                                              prior_lad = LAD_CONTROL,
                                              n_threads = N_SL_THREADS)),
 
@@ -123,14 +133,13 @@ list(
                                                   logs_folder = "logs/calib"),
              pattern = cross(id_models, reps),
              iteration = "list"),
-
   
   ## Save output model ----
   tar_target(output_models_fp, save_output_models(exp_design,
                                                   models_setup,
                                                   models_output_list,
                                                   "output/calib/",
-                                                  "outmods_20260402_5mods.Rdata")),
+                                                  "outmods_20260710_final.Rdata")),
   
 
 
@@ -159,48 +168,39 @@ list(
                                                           models_comparison,
                                                           models_evaluation,
                                                           "output/comparison/",
-                                                          "outcomp_20260402_5mods.Rdata")),
+                                                          "outcomp_20260710_final.Rdata")),
   
 
   # COMPUTE OUTPUT VARIABLES ----
-
+  tar_target(analysis_id_mods, c(2, 6)),
+  
   ## Create parameters table ----
   tar_target(output_params, get_output_params(models_output_list,
                                               n_burning = N_BURNING_PER_REP,
                                               n_samples_per_chain = N_SAMPLES_PER_REP)),
+  
+  ## Estimate LAD ----
+  tar_target(output_tree_lad, compute_output_tree_lad(data_stands,
+                                                      models_setup,
+                                                      output_params,
+                                                      id_mod = analysis_id_mods,
+                                                      site_name = site_names),
+             pattern = cross(analysis_id_mods, site_names), iteration = "list"),
+  
 
-  ## Compute tree-level variables ----
-  # tar_target(data_output_tree, compute_output_tree(data_stands,
-  #                                                  models_setup,
-  #                                                  output_params,
-  #                                                  LAD_CONTROL)),
-  # 
+  ## Get intercepted light with SamsaraLight ----
+  tar_target(output_tree_light, compute_output_tree_light(data_stands,
+                                                          data_rad,
+                                                          output_tree_lad),
+             pattern = map(output_tree_lad), iteration = "list"),
 
-  # ## Compute stand-level variables ----
-  # tar_target(data_output_stand, compute_output_stand(data_stands,
-  #                                                    models_setup,
-  #                                                    output_params,
-  #                                                    LAD_CONTROL)),
-
-
-  ## Apply SamsaRalight on output stands ----
-  # tar_target(data_output_light_list, compute_output_light(data_stands,
-  #                                                         data_rad,
-  #                                                         models_setup,
-  #                                                         output_params,
-  #                                                         LAD_CONTROL)),
-  # 
-  # tar_target(data_output_light, bind_output_light(data_output_light_list)),
-
-
-  ## Save output data ----
+  
+  ## Save output data for analysis ----
   tar_target(output_analysis_fp, save_output_analysis(output_params,
-                                                      # data_output_tree,
-                                                      # data_output_stand,
-                                                      # data_output_light,
-                                                      NULL, NULL, NULL,
+                                                      output_tree_lad,
+                                                      output_tree_light,
                                                       "output/analysis/",
-                                                      "outanalysis_20260402_5mods.Rdata")),
+                                                      "outanalysis_20260710_final.Rdata")),
   
   NULL
 )

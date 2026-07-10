@@ -108,25 +108,41 @@ clean_database <- function(init_db_raw) {
     
     dplyr::mutate(
       
+      shadetol = case_match(sp_calib,
+                            "Abies_alba" ~ 4.6, # 4.6 (0.06)
+                            "Fagus_sylvatica" ~ 4.56, # 4.56 (0.11)
+                            "Picea_abies" ~ 4.45, # 4.45 (0.5)
+                            "Carpinus_betulus" ~ 3.97, # 3.97 (0.12)
+                            "Sorbus_sp" ~ mean(c(2.73, 3.38)), # 3.055: aucuparia: 2.73 (0.21) and torminalis 3.38 (0.2)
+                            "Pseudotsuga_menziesii" ~ 2.78, # 2.78 (0.18)
+                            "other_gymno" ~ 2.69, # Mean gymnosperm values in Niinemets and Valladares
+                            "Quercus_sp" ~ mean(c(2.73, 2.45)), # 2.59: petraea: 2.73 (0.27) and robur 2.45 (0.28)
+                            "other_angio" ~ 2.45, # Mean angiosperm values in Niinemets and Valladares
+                            "Populus_sp" ~ mean(c(1.67, 2.22)), # 1.945: x canadensis: 1.67 (0.33) and tremula 2.22 (0.07)
+                            "Betula_sp" ~ mean(c(2.03, 1.85)), # 1.94: pendula: 2.03 (0.09) and pubescens 1.85 (0.07)
+                            "Pinus_sylvestris" ~ 1.67, # 1.67 (0.33)
+                            "Larix_decidua" ~ 1.46 # 1.46 (0.29)
+      ),
+      
       leaf_group = 
         case_match(sp_calib,
                    c(
-                     "Fagus_sylvatica", # 4.56 (0.11)
-                     "Quercus_sp", # petraea: 2.73 (0.27) and robur 2.45 (0.28)
-                     "Carpinus_betulus", # 3.97 (0.12)
-                     "Sorbus_sp", # aucuparia: 2.73 (0.21) and torminalis 3.38 (0.2)
-                     "Populus_sp", # x canadensis: 1.67 (0.33) and tremula 2.22 (0.07)
-                     "Betula_sp", # pendula: 2.03 (0.09) and pubescens 1.85 (0.07)
-                     "other_angio" # Malus domestica: 1.93, crataegus laevigata: 2.45 (0.28), castanea sativa: 3.15 (0.23)
+                     "Fagus_sylvatica", 
+                     "Quercus_sp", 
+                     "Carpinus_betulus", 
+                     "Sorbus_sp", 
+                     "Populus_sp", 
+                     "Betula_sp", 
+                     "other_angio" 
                    
                      ) ~ "broad",
                    
                    c(
-                     "Picea_abies", # 4.45 (0.5)
-                     "Pseudotsuga_menziesii", # 2.78 (0.18)
-                     "Pinus_sylvestris", # 1.67 (0.33)
-                     "Abies_alba", # 4.6 (0.06)
-                     "Larix_decidua", # 1.46 (0.29)
+                     "Picea_abies", 
+                     "Pseudotsuga_menziesii", 
+                     "Pinus_sylvestris", 
+                     "Abies_alba", 
+                     "Larix_decidua", 
                      "other_gymno"
                    
                      ) ~ "needle"

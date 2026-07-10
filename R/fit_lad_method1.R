@@ -1,7 +1,6 @@
 fit_lad_method1 <- function(output_sensors,
                             convergence_threshold,
                             data_stands,
-                            output_punobs,
                             output_plots_fp) 
 {
   
@@ -12,13 +11,11 @@ fit_lad_method1 <- function(output_sensors,
   # Observed pacl for each site
   data_sensors <- data_stands %>% 
     purrr::map(~.x$sensors) %>% 
-    dplyr::bind_rows(.id = "site") %>% 
-    dplyr::left_join(output_punobs, by = c("site", "id_sensor"))
-  
+    dplyr::bind_rows(.id = "site")
+
   # Compute residuals for each sensor and LAD
-  output_residuals <- output_sensors %>% 
-    dplyr::left_join(data_sensors, 
-                     by = c("site", "id_sensor")) %>% 
+  output_sensors <- output_sensors %>% 
+    dplyr::left_join(data_sensors, by = c("site", "id_sensor")) %>% 
     dplyr::mutate(
       res = PACLtotal - pacl
     )
@@ -35,8 +32,7 @@ fit_lad_method1 <- function(output_sensors,
                      by = c("site", "id_sensor")) %>% 
     dplyr::mutate(
       sensor_label = paste0(id_sensor, 
-                            " - PACL = ", round(PACLtotal, 2), 
-                            " - punobs = ", round(punobs, 2))
+                            " - PACL = ", round(PACLtotal, 2))
     )
   
   output_residuals_labeled <- output_residuals %>% 
@@ -113,5 +109,5 @@ fit_lad_method1 <- function(output_sensors,
   
   # Return the summarized info per sensor
   info_sensors %>% 
-    dplyr::select(site, id_sensor, best_lad, converged, punobs, pacl_obs = PACLtotal)
+    dplyr::select(site, id_sensor, best_lad, converged)
 }

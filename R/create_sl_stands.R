@@ -1,6 +1,7 @@
 create_sl_stands <- function(init_db,
                              data_rad,
                              cell_size,
+                             local_ba_radius,
                              seed) {
   
   # Set the seed for reproducibility
@@ -26,7 +27,8 @@ create_sl_stands <- function(init_db,
       dplyr::select(id_tree = Id, 
                     species_in_inv = Essence_Latin,
                     species_group,
-                    leaf_group, shadetol_group,
+                    leaf_group, 
+                    shadetol, shadetol_group,
                     species = sp_calib,
                     x = X, y = Y, dbh_cm = Dbh,
                     crown_type, h_m = H, hbase_m = CBH, hmax_m = CMRH,
@@ -76,7 +78,10 @@ create_sl_stands <- function(init_db,
     
     # Compute basal area competition variables
     tmp_stand$trees <- compute_competition_trees(tmp_stand$trees,
-                                                 tmp_stand$transform$new_area_ha)
+                                                 local_ba_radius,
+                                                 tmp_stand$transform$new_area_ha,
+                                                 tmp_stand$geometry$n_cells_x * cell_size,
+                                                 tmp_stand$geometry$n_cells_y * cell_size)
     
     # Compute ray competition index RCI
     tmp_stand$trees <- compute_rci_trees(tmp_stand,

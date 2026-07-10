@@ -1,7 +1,8 @@
-get_sensors_punobs <- function(data_stands, 
-                               data_rad)
+filter_sensors <- function(data_stands, 
+                           data_rad,
+                           max_punobs,
+                           min_pacl)
 {
-  
   # For each site and each LAD value
   site_names <- names(data_stands)
   
@@ -21,7 +22,12 @@ get_sensors_punobs <- function(data_stands,
     # Sl sensors punobs for the plot
     # i.e. percentage of pacl from unobstructed rays
     out_punobs_sites[[site]] <- tmp_out_sl$output$light$sensors %>% 
-      dplyr::select(id_sensor, punobs)
+      dplyr::select(id_sensor, punobs) %>% 
+      dplyr::left_join(data_stands[[site]]$sensors %>% 
+                         dplyr::select(id_sensor, pacl_field = PACLtotal),
+                       by = "id_sensor") %>% 
+      
+      dplyr::mutate(keep = pacl_field >= min_pacl & punobs <= max_punobs)
   }
   
   out_punobs_sites %>% 

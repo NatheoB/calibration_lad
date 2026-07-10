@@ -2,7 +2,7 @@ initialise_models <- function(exp_design,
                               data_plots,
                               data_stands,
                               data_rad,
-                              output_lad_method1,
+                              sensors_punobs,
                               prior_lad,
                               n_threads) {
   
@@ -18,7 +18,7 @@ initialise_models <- function(exp_design,
                                                  data_plots,
                                                  data_stands,
                                                  data_rad,
-                                                 output_lad_method1,
+                                                 sensors_punobs,
                                                  prior_lad,
                                                  n_threads)
   }
@@ -34,7 +34,7 @@ initialise_model <- function(mod_design,
                              data_plots,
                              data_stands,
                              data_rad,
-                             output_lad_method1,
+                             sensors_punobs,
                              prior_lad,
                              n_threads) {
   
@@ -49,9 +49,13 @@ initialise_model <- function(mod_design,
                                site, 
                                lad_random_per_sites,
                                lad_intercept_per_sp,
+                               lad_shadetol_per_sp,
                                lad_dbh_per_sp,
                                lad_compet_per_sp,
-                               lad_dbhXcompet_per_sp
+                               lad_shadetolXdbh_per_sp,
+                               lad_shadetolXcompet_per_sp,
+                               lad_dbhXcompet_per_sp,
+                               lad_shadetolXdbhXcompet_per_sp
                                ) {
     
     # Species-specific parameters ----
@@ -61,9 +65,13 @@ initialise_model <- function(mod_design,
     sp_coefs <- data.frame(
       species = species2calib,
       intercept = lad_intercept_per_sp,
+      beta_shadetol = lad_shadetol_per_sp,
       beta_dbh = lad_dbh_per_sp,
       beta_compet = lad_compet_per_sp,
-      beta_dbhxcompet = lad_dbhXcompet_per_sp
+      beta_shadetolXdbh = lad_shadetolXdbh_per_sp,
+      beta_shadetolXcompet = lad_shadetolXcompet_per_sp,
+      beta_dbhXcompet = lad_dbhXcompet_per_sp,
+      beta_shadetolXdbhXcompet = lad_shadetolXdbhXcompet_per_sp
     )
 
     
@@ -81,9 +89,14 @@ initialise_model <- function(mod_design,
       dplyr::mutate( 
         eta = random_site + 
           intercept + 
+          beta_shadetol * shadetolstd + 
           beta_dbh * dbhstd + 
           beta_compet * competstd + 
-          beta_dbhxcompet * dbhstd * competstd,
+          beta_shadetolXdbh * shadetolstd * dbhstd + 
+          beta_shadetolXcompet * shadetolstd * competstd + 
+          beta_dbhXcompet * dbhstd * competstd + 
+          beta_shadetolXdbhXcompet * shadetolstd * dbhstd * competstd,
+        
         crown_lad = exp(eta)
       )
     
@@ -109,9 +122,13 @@ initialise_model <- function(mod_design,
                                      data_rad,
                                      lad_random_per_sites,
                                      lad_intercept_per_sp,
+                                     lad_shadetol_per_sp,
                                      lad_dbh_per_sp,
                                      lad_compet_per_sp,
+                                     lad_shadetolXdbh_per_sp,
+                                     lad_shadetolXcompet_per_sp,
                                      lad_dbhXcompet_per_sp,
+                                     lad_shadetolXdbhXcompet_per_sp,
                                      print.pb) {
 
     
@@ -136,9 +153,13 @@ initialise_model <- function(mod_design,
         site, 
         lad_random_per_sites,
         lad_intercept_per_sp,
+        lad_shadetol_per_sp,
         lad_dbh_per_sp,
         lad_compet_per_sp,
-        lad_dbhXcompet_per_sp
+        lad_shadetolXdbh_per_sp,
+        lad_shadetolXcompet_per_sp,
+        lad_dbhXcompet_per_sp,
+        lad_shadetolXdbhXcompet_per_sp
       )
       
       # Compute PACL residuals the sensors ----
@@ -249,13 +270,34 @@ initialise_model <- function(mod_design,
       i_param <- i_param + 1
     }
     
+    ## 3.2. Slopes ----
+    
+    ### 3.2.1. SHADETOL effect ----
+    if (mod_design$shadetol_effect) {
+      
+      if (!is.na(mod_design$grouping_var)) {
+        
+        p_shadetol_groups <- p[i_param + (1:n_groups) - 1]
+        i_param <- i_param + n_groups
+        
+      } else {
+        
+        p_shadetol_groups <- p[i_param]
+        i_param <- i_param + 1
+      }
+      
+      
+    } else {
+      
+      # Otherwise, no dbh effect
+      p_shadetol_groups <- rep(0, times = n_groups)
+    }
     
     
-    
-    ## 3.2. DBH effect ----
+    ### 3.2.2. DBH effect ----
     if (mod_design$dbh_effect) {
       
-      if (!is.na(mod_design$grouping_var) & mod_design$dbh_per_group) {
+      if (!is.na(mod_design$grouping_var)) {
         
         p_dbh_groups <- p[i_param + (1:n_groups) - 1]
         i_param <- i_param + n_groups
@@ -275,10 +317,10 @@ initialise_model <- function(mod_design,
     
     
     
-    ## 3.3. Competition effect ----
+    ### 3.2.3 Competition effect ----
     if (mod_design$compet_effect) {
       
-      if (!is.na(mod_design$grouping_var) & mod_design$compet_per_group) {
+      if (!is.na(mod_design$grouping_var)) {
         
         p_compet_groups <- p[i_param + (1:n_groups) - 1]
         i_param <- i_param + n_groups
@@ -297,18 +339,61 @@ initialise_model <- function(mod_design,
     }
     
     
+    ## 3.3. Interactions ----
     
-    
-    ## 3.4. COMPETxDBH interaction ----
-    if (mod_design$dbh_interaction_compet) {
+    ### 3.3.1. SHADETOL X DBH interaction ----
+    if (mod_design$shadetol_effect & mod_design$dbh_effect) {
       
-      if (!is.na(mod_design$grouping_var) & mod_design$interaction_per_group) {
+      if (!is.na(mod_design$grouping_var)) {
+        
+        p_shadetolXdbh_groups <- p[i_param + (1:n_groups) - 1]
+        i_param <- i_param + n_groups
+        
+      } else {
+        
+        p_shadetolXdbh_groups <- p[i_param]
+        i_param <- i_param + 1
+      }
+      
+      
+    } else {
+      
+      # Otherwise, no shadetol X dbh effect
+      p_shadetolXdbh_groups <- rep(0, times = n_groups)
+    }
+    
+    
+    ### 3.3.2. SHADETOL X COMPET interaction ----
+    if (mod_design$shadetol_effect & mod_design$compet_effect) {
+      
+      if (!is.na(mod_design$grouping_var)) {
+        
+        p_shadetolXcompet_groups <- p[i_param + (1:n_groups) - 1]
+        i_param <- i_param + n_groups
+        
+      } else {
+        
+        p_shadetolXcompet_groups <- p[i_param]
+        i_param <- i_param + 1
+      }
+      
+      
+    } else {
+      
+      # Otherwise, no shadetol X compet effect
+      p_shadetolXcompet_groups <- rep(0, times = n_groups)
+    }
+    
+    
+    ### 3.3.3. DBH X COMPET interaction ----
+    if (mod_design$dbh_effect & mod_design$compet_effect) {
+      
+      if (!is.na(mod_design$grouping_var)) {
         
         p_dbhXcompet_groups <- p[i_param + (1:n_groups) - 1]
         i_param <- i_param + n_groups
         
-        p_dbhXcompet <- 0
-        
+
       } else {
         
         p_dbhXcompet_groups <- p[i_param]
@@ -318,8 +403,30 @@ initialise_model <- function(mod_design,
       
     } else {
       
-      # Otherwise, no dbhXcompet effect
+      # Otherwise, no dbh X compet effect
       p_dbhXcompet_groups <- rep(0, times = n_groups)
+    }
+    
+    
+    ### 3.3.4. SHADETOL X DBH X COMPET interaction ----
+    if (mod_design$shadetol_effect & mod_design$dbh_effect & mod_design$compet_effect) {
+      
+      if (!is.na(mod_design$grouping_var)) {
+        
+        p_shadetolXdbhXcompet_groups <- p[i_param + (1:n_groups) - 1]
+        i_param <- i_param + n_groups
+        
+      } else {
+        
+        p_shadetolXdbhXcompet_groups <- p[i_param]
+        i_param <- i_param + 1
+      }
+      
+      
+    } else {
+      
+      # Otherwise, no dbh X compet effect
+      p_shadetolXdbhXcompet_groups <- rep(0, times = n_groups)
     }
     
     
@@ -341,9 +448,15 @@ initialise_model <- function(mod_design,
       
       # Intercept and slope effects
       "intercept_per_group" = p_intercept_groups,
+      "shadetol_per_group" = p_shadetol_groups,
       "dbh_per_group" = p_dbh_groups,
       "compet_per_group" = p_compet_groups,
-      "dbhXcompet_per_group" = p_dbhXcompet_groups
+      
+      # Interactions
+      "shadetolXdbh_per_group" = p_shadetolXdbh_groups,
+      "shadetolXcompet_per_group" = p_shadetolXcompet_groups,
+      "dbhXcompet_per_group" = p_dbhXcompet_groups,
+      "shadetolXdbhXcompet_per_group" = p_shadetolXdbhXcompet_groups
       
     ))
   }
@@ -393,9 +506,15 @@ initialise_model <- function(mod_design,
     
     # 4. Get the group-specific intercept and slope effects for each species ----
     p_intercept_per_sp <- p_list$intercept_per_group[id_group_per_species]
+    
+    p_shadetol_per_sp <- p_list$shadetol_per_group[id_group_per_species]
     p_dbh_per_sp <- p_list$dbh_per_group[id_group_per_species]
     p_compet_per_sp <- p_list$compet_per_group[id_group_per_species]
+    
+    p_shadetolXdbh_per_sp <- p_list$shadetolXdbh_per_group[id_group_per_species]
+    p_shadetolXcompet_per_sp <- p_list$shadetolXcompet_per_group[id_group_per_species]
     p_dbhXcompet_per_sp <- p_list$dbhXcompet_per_group[id_group_per_species]
+    p_shadetolXdbhXcompet_per_sp <- p_list$shadetolXdbhXcompet_per_group[id_group_per_species]
 
     
     # 5. Compute the residuals with the given lad parameters ----
@@ -406,9 +525,13 @@ initialise_model <- function(mod_design,
                                      data_rad, 
                                      p_random_per_site,
                                      p_intercept_per_sp,
+                                     p_shadetol_per_sp,
                                      p_dbh_per_sp,
                                      p_compet_per_sp,
+                                     p_shadetolXdbh_per_sp,
+                                     p_shadetolXcompet_per_sp,
                                      p_dbhXcompet_per_sp,
+                                     p_shadetolXdbhXcompet_per_sp,
                                      print.pb)
     residuals <- out_sl$residuals
     
@@ -621,28 +744,27 @@ initialise_model <- function(mod_design,
   # SCRIPT ----
   
   ## Filter sensors ----
-  # Remove sensors that did not converged
-  
+
   if (mod_design$filter_sensors) {
     
     for (site_name in names(data_stands)) {
       
       data_stands[[site_name]]$sensors <- data_stands[[site_name]]$sensors %>%
         dplyr::left_join(
-          output_lad_method1 %>% 
+          sensors_punobs %>% 
             dplyr::filter(site == site_name) %>%
             dplyr::ungroup() %>% 
-            dplyr::select(id_sensor, converged),
+            dplyr::select(id_sensor, keep),
           by = "id_sensor"
         ) %>%
-        dplyr::filter(converged)
+        dplyr::filter(keep)
       
     }
     
     message(
       paste0(
-        sum(!output_lad_method1$converged), "/",
-        nrow(output_lad_method1), " sensors had been removed"
+        sum(!sensors_punobs$keep), "/",
+        nrow(sensors_punobs), " sensors had been removed"
       )
     )
     
@@ -665,6 +787,24 @@ initialise_model <- function(mod_design,
   
   
   ## Standardized variables ----
+  
+  ### SHADETOL ----
+  shadetol_vect <- data_stands %>% 
+    purrr::map(~.x$trees) %>% 
+    dplyr::bind_rows() %>% 
+    dplyr::select(species, shadetol) %>% 
+    dplyr::distinct() %>% 
+    dplyr::pull(shadetol)
+  
+  shadetol_mean <- mean(shadetol_vect)
+  shadetol_sd <- sd(shadetol_vect)
+  
+  data_stands <- data_stands %>% 
+    purrr::map(~{
+      .x$trees <- .x$trees %>% 
+        dplyr::mutate(shadetolstd = (shadetol - shadetol_mean) / shadetol_sd)
+      .x
+    })
   
   ### DBH ----
   dbh_vect <- data_stands %>% 
@@ -704,7 +844,6 @@ initialise_model <- function(mod_design,
   } else {
     
     # Otherwise, set it to 0 
-    
     data_stands <- data_stands %>% 
       purrr::map(~{
         .x$trees <- .x$trees %>% 
@@ -866,12 +1005,33 @@ initialise_model <- function(mod_design,
   }
   
   
+  ### SHADETOL effect ----
+  # BE CAREFUL : SHADETOL in this model is standardized
+  if (mod_design$shadetol_effect) {
+    
+    if (!is.na(mod_design$grouping_var)) {
+      
+      # For each group
+      par_normal <- c(par_normal, paste0("shadetol.", groups2calib))
+      prior_normal_mean <- c(prior_normal_mean, rep(0, times = length(groups2calib)))
+      prior_normal_sd <- c(prior_normal_sd, rep(0.5, times = length(groups2calib)))
+      
+    } else {
+      
+      # Mean species
+      par_normal <- c(par_normal, "shadetol")
+      prior_normal_mean <- c(prior_normal_mean, 0)
+      prior_normal_sd <- c(prior_normal_sd, 0.5)
+    }
+    
+  } # Otherwise, no shadetol effect
+  
   
   ### DBH effect ----
   # BE CAREFUL : DBH in this model is standardized
   if (mod_design$dbh_effect) {
     
-    if (!is.na(mod_design$grouping_var) & mod_design$dbh_per_group) {
+    if (!is.na(mod_design$grouping_var)) {
       
       # For each group
       par_normal <- c(par_normal, paste0("dbh.", groups2calib))
@@ -894,7 +1054,7 @@ initialise_model <- function(mod_design,
   # BE CAREFUL : COMPET variable in this model is standardized
   if (mod_design$compet_effect) {
     
-    if (!is.na(mod_design$grouping_var) & mod_design$compet_per_group) {
+    if (!is.na(mod_design$grouping_var)) {
       
       # For each group
       par_normal <- c(par_normal, paste0("compet.", groups2calib))
@@ -912,21 +1072,50 @@ initialise_model <- function(mod_design,
   } # Otherwise, no compet effect
   
   
-  ### Interaction COMPET x DBH ----
-  if (mod_design$dbh_interaction_compet) {
+  ### Interaction SHADETOL x DBH ----
+  if (mod_design$shadetol_effect & mod_design$dbh_effect) {
     
-    # Send error if compet or dbh effect are not activated
-    if (!mod_design$dbh_effect |
-        !mod_design$compet_effect) {
-      stop("DEBUG: include both compet and dbh effect to consider interaction DBH:COMPET")
+    if (!is.na(mod_design$grouping_var)) {
+      
+      # For each group
+      par_normal <- c(par_normal, paste0("shadetolXdbh.", groups2calib))
+      prior_normal_mean <- c(prior_normal_mean, rep(0, times = length(groups2calib)))
+      prior_normal_sd <- c(prior_normal_sd, rep(0.5, times = length(groups2calib)))
+      
+    } else {
+      
+      # Mean species
+      par_normal <- c(par_normal, "shadetolXdbh")
+      prior_normal_mean <- c(prior_normal_mean, 0)
+      prior_normal_sd <- c(prior_normal_sd, 0.5)
     }
     
-    # Send error if compet or dbh effect are not considered equally (global or per group)
-    if (mod_design$dbh_per_group != mod_design$compet_per_group) {
-      stop("DEBUG: dbh and compet per group must be considered the same manner to consider compet:dbh interaction")
+  }
+  
+  ### Interaction SHADETOL x COMPET ----
+  if (mod_design$shadetol_effect & mod_design$compet_effect) {
+    
+    if (!is.na(mod_design$grouping_var)) {
+      
+      # For each group
+      par_normal <- c(par_normal, paste0("shadetolXcompet.", groups2calib))
+      prior_normal_mean <- c(prior_normal_mean, rep(0, times = length(groups2calib)))
+      prior_normal_sd <- c(prior_normal_sd, rep(0.5, times = length(groups2calib)))
+      
+    } else {
+      
+      # Mean species
+      par_normal <- c(par_normal, "shadetolXcompet")
+      prior_normal_mean <- c(prior_normal_mean, 0)
+      prior_normal_sd <- c(prior_normal_sd, 0.5)
     }
     
-    if (!is.na(mod_design$grouping_var) & mod_design$interaction_per_group) {
+  }
+  
+  ### Interaction DBH X COMPET ----
+  if (mod_design$dbh_effect & mod_design$compet_effect) {
+    
+    if (!is.na(mod_design$grouping_var)) {
       
       # For each group
       par_normal <- c(par_normal, paste0("dbhXcompet.", groups2calib))
@@ -937,6 +1126,26 @@ initialise_model <- function(mod_design,
       
       # Mean species
       par_normal <- c(par_normal, "dbhXcompet")
+      prior_normal_mean <- c(prior_normal_mean, 0)
+      prior_normal_sd <- c(prior_normal_sd, 0.5)
+    }
+    
+  }
+  
+  ### Interaction SHADETOL X DBH X COMPET ----
+  if (mod_design$shadetol_effect & mod_design$dbh_effect & mod_design$compet_effect) {
+    
+    if (!is.na(mod_design$grouping_var)) {
+      
+      # For each group
+      par_normal <- c(par_normal, paste0("shadetolXdbhXcompet.", groups2calib))
+      prior_normal_mean <- c(prior_normal_mean, rep(0, times = length(groups2calib)))
+      prior_normal_sd <- c(prior_normal_sd, rep(0.5, times = length(groups2calib)))
+      
+    } else {
+      
+      # Mean species
+      par_normal <- c(par_normal, "shadetolXdbhXcompet")
       prior_normal_mean <- c(prior_normal_mean, 0)
       prior_normal_sd <- c(prior_normal_sd, 0.5)
     }
