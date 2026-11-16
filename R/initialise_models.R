@@ -48,6 +48,7 @@ initialise_model <- function(mod_design,
                                data_rad,
                                site, 
                                lad_random_per_sites,
+                               lad_random_per_sp,
                                lad_intercept_per_sp,
                                lad_shadetol_per_sp,
                                lad_dbh_per_sp,
@@ -64,6 +65,7 @@ initialise_model <- function(mod_design,
     # And also the same in is_species_gymno when we added gymnosperm coefficients to species-specific parameters
     sp_coefs <- data.frame(
       species = species2calib,
+      random_sp = lad_random_per_sp,
       intercept = lad_intercept_per_sp,
       beta_shadetol = lad_shadetol_per_sp,
       beta_dbh = lad_dbh_per_sp,
@@ -88,6 +90,7 @@ initialise_model <- function(mod_design,
       dplyr::left_join(sp_coefs, by = "species") %>% 
       dplyr::mutate( 
         eta = random_site + 
+          random_sp + 
           intercept + 
           beta_shadetol * shadetolstd + 
           beta_dbh * dbhstd + 
@@ -110,7 +113,7 @@ initialise_model <- function(mod_design,
       parallel_mode = TRUE,
       n_threads = n_threads,
       verbose = FALSE
-      )
+    )
     
     # Return sl sensors output for the plot ----
     tmp_out_samsalight$output$light$sensors
@@ -121,6 +124,7 @@ initialise_model <- function(mod_design,
   compute_pacl_residuals <- function(data_stands,
                                      data_rad,
                                      lad_random_per_sites,
+                                     lad_random_per_sp,
                                      lad_intercept_per_sp,
                                      lad_shadetol_per_sp,
                                      lad_dbh_per_sp,
@@ -152,6 +156,7 @@ initialise_model <- function(mod_design,
         data_rad,
         site, 
         lad_random_per_sites,
+        lad_random_per_sp,
         lad_intercept_per_sp,
         lad_shadetol_per_sp,
         lad_dbh_per_sp,
@@ -171,7 +176,7 @@ initialise_model <- function(mod_design,
         
         # Measured pacl from field sensor
         data_stands[[site]]$sensors %>%
-          dplyr::select(id_sensor, pacl_field = PACLtotal),
+          dplyr::select(id_sensor, pacl_field = pacl),
         
         by = "id_sensor"
       ) %>% 
@@ -524,6 +529,7 @@ initialise_model <- function(mod_design,
     out_sl <- compute_pacl_residuals(data_stands, 
                                      data_rad, 
                                      p_random_per_site,
+                                     p_random_per_sp,
                                      p_intercept_per_sp,
                                      p_shadetol_per_sp,
                                      p_dbh_per_sp,

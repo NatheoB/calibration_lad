@@ -5,7 +5,7 @@ compute_output_tree_lad <- function(data_stands,
                                     site_name) {
   
   # Keep only interest  model
-  params <- output_params[[id_mod]]
+  params <- output_params[[as.character(id_mod)]]
   setup <- models_setup[[id_mod]]
   
   # Get species-specific and leaf group parameters

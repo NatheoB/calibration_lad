@@ -1,6 +1,25 @@
 plot_stands <- function(data_stands,
-                        data_species,
+                        species_colors_fp,
                         output_plots_fp) {
+  
+  # Set colors
+  species_colors <- vroom::vroom(species_colors_fp, show_col_types = F)
+  
+  species_colors_inv <- setNames(
+    species_colors$color_inv, 
+    species_colors$sp_in_inv
+  )
+  
+  species_colors_calib <- setNames(
+    unique(species_colors$color_calib), 
+    unique(species_colors$sp_calib)
+  )
+  
+  # Create output folder
+  if (!file.exists(output_plots_fp)) {
+    dir.create(output_plots_fp, recursive = T) 
+  }
+  
   
   
   # Create the plots of each stand  
@@ -10,35 +29,20 @@ plot_stands <- function(data_stands,
     
     # Get the stand
     tmp_stand <- data_stands[[site]]
-    
-    
-    # Set colors
-    tmp_colors_inv <- setNames(data_species[[site]]$Couleur, 
-                               data_species[[site]]$Essence_Latin)
-    
-    tmp_colors_stand <- setNames(data_species[[site]]$Couleur, 
-                                 data_species[[site]]$sp_calib)
-    tmp_colors_stand[c("other_angio", "other_gymno")] <- c("#00FF00", "#D2691E")
-    
-    
-    # Create output folder
-    if (!file.exists(output_plots_fp)) {
-      dir.create(output_plots_fp, recursive = T) 
-    }
-    
+  
     
     # Plot stand map
     message("SamsaRaLight stand map")
-    
+
     png(file.path(output_plots_fp,
-                  paste0(site, "_map_sl.png")), 
+                  paste0(site, "_map_sl.png")),
         width = 600, height = 600)
-    
+
     print(
-      plot(tmp_stand) & 
-        scale_fill_manual(values = tmp_colors_stand)
+      plot(tmp_stand) &
+        scale_fill_manual(values = species_colors_calib)
     )
-    
+
     dev.off()
     
     
@@ -51,7 +55,7 @@ plot_stands <- function(data_stands,
     
     print(
       plot(tmp_stand, top_down = TRUE) & 
-        scale_color_manual(values = tmp_colors_stand)
+        scale_color_manual(values = species_colors_calib)
     )
     
     dev.off()
@@ -62,7 +66,7 @@ plot_stands <- function(data_stands,
     
     # Change species name for plotting inventoried species
     tmp_stand$inventory <- tmp_stand$inventory %>%
-      dplyr::mutate(species = species_in_inv)
+      dplyr::mutate(species = sp_in_inv)
     
     
     png(file.path(output_plots_fp,
@@ -71,7 +75,7 @@ plot_stands <- function(data_stands,
     
     print(
       plot_inventory(tmp_stand$inventory) + 
-        scale_fill_manual(values = tmp_colors_inv) +
+        scale_fill_manual(values = species_colors_inv) +
         labs(title = paste("Inventory map of", site)) +
         theme(plot.title = element_text(hjust = 0.5))
     )

@@ -20,9 +20,9 @@ options(tidyverse.quiet = TRUE,
         clustermq.scheduler = "multiprocess")
 
 tar_option_set(packages = c("dplyr", "tidyr", "data.table", 
-                            "vroom", "purrr", 
-                            "ggplot2", "ggforce", "sf",
-                            "SamsaRaLight",
+                            "vroom", "purrr", "janitor",
+                            "ggplot2", "ggforce", "sf", "sp",
+                            "SamsaRaLight", "readxl", "nlme",
                             "BayesianTools", "extraDistr", "loo",
                             "rlang", "e1071", "mgcv"))
 
@@ -36,51 +36,63 @@ list(
   
   tar_target(N_SL_THREADS, 8),
   
-  tar_target(N_REPS, 3),
-  tar_target(N_ITERATIONS_PER_REP, 600000),
-  tar_target(N_BURNING_PER_REP, 500000),
-  tar_target(N_SAMPLES_PER_REP, 1000),
+  tar_target(N_REPS, 2), # TEST (production: 3)
+  tar_target(N_ITERATIONS_PER_REP, 600), # TEST (production: 600000)
+  tar_target(N_BURNING_PER_REP, 300), # TEST (production: 500000)
+  tar_target(N_SAMPLES_PER_REP, 50), # TEST (production: 1000)
   
   tar_target(LOCAL_BA_RADIUS, 15),
   tar_target(CELL_SIZE, 5),
   
   
-  # PREPARE CALIBRATION ----
+  # PREPARE DATABASE ----
   
-  ## Load the initial database ----
-  tar_target(init_db_fp, "data/dataBase.RData", format = "file"),
-  tar_target(plot_infos_fp, "data/plot_infos.csv", format = "file"),
+  ## Format the different datasets into a calibration database ----
+  tar_target(init_db_raw, format_database(
+    data_irres_fp = "data/inventories/IRRES/backupIRRES_20261006_999-final.RData",
+    data_cloture_fp = "data/inventories/Cloture/cloture.rdata",
+    data_baileux_folderpath = "data/inventories/UCLouvain/",
+    data_fontfreyde_folderpath = "data/inventories/INRAe/Fontfreyde",
+    data_lorris_folderpath = "data/inventories/INRAe/Lorris",
+    data_ventoux_folderpath = "data/inventories/INRAe/Ventoux",
+    dico_species_fp = "data/inventories/dicoEssence.xlsx"
+  )),
   
-  tar_target(init_db_raw, load_database_from_rdata(init_db_fp,
-                                                   plot_infos_fp)),
+  
+  ## Information about plots ----
+  tar_target(plot_infos_fp, "data/inventories/plots_info.csv", format = "file"),
+  tar_target(data_plots, vroom::vroom(plot_infos_fp)),
+
+  ## Finalise the database ----
+  tar_target(init_db, finalise_database(init_db_raw, data_plots)),
   
   
-  ## Clean the database ----
-  tar_target(init_db, clean_database(init_db_raw)),
   
+  # RECONSTRUCT 3D stands ----
   
   ## Catch monthly radiation data from PVGIS ----
-  tar_target(data_rad, get_radiation_dataset(init_db$plots)),
+  tar_target(data_rad, get_radiation_dataset(data_plots)),
   tar_target(data_rad_fp, save_input_rad(data_rad, fp = "data/data_rad.csv")),
-  
   # tar_target(data_rad, load_radiation_dataset("data/data_rad.csv")),
   
   
-  ## Create SamsaRaLight stands from tree inventories ----
-  tar_target(data_stands, create_sl_stands(init_db,
+  ## Calibrate allometric relationships ----
+  tar_target(params_alloms, fit_crown_allometries(init_db, output_folder = "output/alloms")),
+  
+  
+  ## Create SamsaRaLight stands ----  
+  tar_target(data_stands, create_sl_stands(init_db, 
                                            data_rad,
+                                           params_alloms,
                                            cell_size = CELL_SIZE,
                                            local_ba_radius = LOCAL_BA_RADIUS,
                                            seed = SEED)),
-
-  tar_target(site_names, names(data_stands)),
   
   
-  ## Plot the calibration data ----
+  ## Plot the stands ----
   # tar_target(plots_stands_fp, plot_stands(data_stands,
-  #                                         data_species = init_db$species,
-  #                                         output_plots_fp = "output/initial_sites")),
-  
+  #                                         species_colors_fp = "data/inventories/species_colors.csv",
+  #                                         output_plots_fp = "output/reconstructed_plots")),
   
   
   # PRELIMINARY ANALYSIS ----
@@ -111,19 +123,27 @@ list(
   
   ## Create the experimental design ----
   tar_target(exp_design, create_experimental_design(N_ITERATIONS_PER_REP)),
-  tar_target(id_models, exp_design$id_model),
-
-
+  tar_target(id_models, c(1, 5)), # TEST (production: exp_design$id_model)
+  
+  
+  ## Plot information in the same order as data_stands ----
+  tar_target(data_plots_calib, data_plots %>%
+               dplyr::slice(match(names(data_stands), site)) %>%
+               dplyr::rename(name = site)),
+  
+  tar_target(site_names, names(data_stands)),
+  
+  
   ## Initialise the Bayesian setups ----
   tar_target(models_setup, initialise_models(exp_design,
-                                             init_db$plots,
+                                             data_plots_calib,
                                              data_stands,
                                              data_rad,
                                              sensors_punobs,
                                              prior_lad = LAD_CONTROL,
                                              n_threads = N_SL_THREADS)),
-
-
+  
+  
   ## Run the MCMC ----
   tar_target(reps, 1:N_REPS),
   
@@ -139,12 +159,11 @@ list(
                                                   models_setup,
                                                   models_output_list,
                                                   "output/calib/",
-                                                  "outmods_20260710_final.Rdata")),
+                                                  "outmods_20261116_test.Rdata")),
   
-
-
+  
   # COMPARE MODELS ----
-
+  
   ### Compute pointwise likelihoods ----
   tar_target(models_summary_pointwise_list, get_summary_pointwise_models(models_setup,
                                                                          models_output_list,
@@ -152,27 +171,27 @@ list(
                                                                          logs_folder = "logs/pointwise"),
              pattern = map(models_output_list),
              iteration = "list"),
-
-
-
+  
+  
+  
   ### Compare models with LOO-CV and WAIC ----
   tar_target(models_comparison, compare_models(models_summary_pointwise_list)),
-
-
+  
+  
   ### Evaluate models with RMSE ----
   tar_target(models_evaluation, evaluate_models(models_summary_pointwise_list)),
-
+  
   
   ### Save model comparison ----
   tar_target(output_comparison_fp, save_output_comparison(models_summary_pointwise_list,
                                                           models_comparison,
                                                           models_evaluation,
                                                           "output/comparison/",
-                                                          "outcomp_20260710_final.Rdata")),
+                                                          "outcomp_20261116_test.Rdata")),
   
-
+  
   # COMPUTE OUTPUT VARIABLES ----
-  tar_target(analysis_id_mods, c(2, 6)),
+  tar_target(analysis_id_mods, c(1, 5)),
   
   ## Create parameters table ----
   tar_target(output_params, get_output_params(models_output_list,
@@ -187,20 +206,20 @@ list(
                                                       site_name = site_names),
              pattern = cross(analysis_id_mods, site_names), iteration = "list"),
   
-
+  
   ## Get intercepted light with SamsaraLight ----
   tar_target(output_tree_light, compute_output_tree_light(data_stands,
                                                           data_rad,
                                                           output_tree_lad),
              pattern = map(output_tree_lad), iteration = "list"),
-
+  
   
   ## Save output data for analysis ----
   tar_target(output_analysis_fp, save_output_analysis(output_params,
                                                       output_tree_lad,
                                                       output_tree_light,
                                                       "output/analysis/",
-                                                      "outanalysis_20260710_final.Rdata")),
+                                                      "outanalysis_20261116_test.Rdata")),
   
   NULL
 )

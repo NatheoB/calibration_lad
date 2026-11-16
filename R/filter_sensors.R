@@ -24,7 +24,7 @@ filter_sensors <- function(data_stands,
     out_punobs_sites[[site]] <- tmp_out_sl$output$light$sensors %>% 
       dplyr::select(id_sensor, punobs) %>% 
       dplyr::left_join(data_stands[[site]]$sensors %>% 
-                         dplyr::select(id_sensor, pacl_field = PACLtotal),
+                         dplyr::select(id_sensor, pacl_field = pacl),
                        by = "id_sensor") %>% 
       
       dplyr::mutate(keep = pacl_field >= min_pacl & punobs <= max_punobs)

@@ -8,22 +8,27 @@ compute_rci_trees <- function(sl_stand,
     parallel_mode = TRUE
   )
   
-  vect_n_tot <- rowSums(tmp_out$output$interceptions$cells$number$total)
-  df_n_tot <- data.frame(
-    id_tree = as.integer(names(vect_n_tot)),
-    n_tot = unname(vect_n_tot)
-  )
-  
-  vect_n_unobstructed <- rowSums(tmp_out$output$interceptions$cells$number_unobstructed$total)
-  df_n_unobstructed <- data.frame(
-    id_tree = as.integer(names(vect_n_unobstructed)),
-    n_unobstructed = unname(vect_n_unobstructed)
-  )
+  # /// Old method to compute RCI (now it is directly included into the SL package output)
+  # vect_n_tot <- rowSums(tmp_out$output$interceptions$cells$number$total)
+  # df_n_tot <- data.frame(
+  #   id_tree = as.integer(names(vect_n_tot)),
+  #   n_tot = unname(vect_n_tot)
+  # )
+  # 
+  # vect_n_unobstructed <- rowSums(tmp_out$output$interceptions$cells$number_unobstructed$total)
+  # df_n_unobstructed <- data.frame(
+  #   id_tree = as.integer(names(vect_n_unobstructed)),
+  #   n_unobstructed = unname(vect_n_unobstructed)
+  # )
+  # 
   
   sl_stand$trees %>% 
-    dplyr::left_join(df_n_tot, by = "id_tree") %>% 
-    dplyr::left_join(df_n_unobstructed, by = "id_tree") %>% 
-    dplyr::mutate(rci = 1 - n_unobstructed / n_tot) %>% 
-    dplyr::select(-n_tot, -n_unobstructed)
+    dplyr::left_join(tmp_out$output$light$trees %>% 
+                       dplyr::select(id_tree, rci),
+                     by = c("id_tree"))
+    # dplyr::left_join(df_n_tot, by = "id_tree") %>% 
+    # dplyr::left_join(df_n_unobstructed, by = "id_tree") %>% 
+    # dplyr::mutate(rci = 1 - n_unobstructed / n_tot) %>% 
+    # dplyr::select(-n_tot, -n_unobstructed) %>% 
   
 }
