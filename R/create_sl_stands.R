@@ -3,6 +3,7 @@ create_sl_stands <- function(init_db,
                              params_alloms,
                              cell_size,
                              local_ba_radius,
+                             sensor_trunk_margin,
                              seed) {
   
   # Set the seed for reproducibility
@@ -73,6 +74,9 @@ create_sl_stands <- function(init_db,
     # Check sensors
     SamsaRaLight::check_sensors(tmp_data$sensors)
 
+    # Move sensors located inside a modelled trunk (mapping error) just outside the stem
+    tmp_data$sensors <- move_sensors_out_of_trunks(tmp_data$sensors, tmp_data$trees, sensor_trunk_margin, site)
+
 
     # Create a square plot with the inventory in the center
     tmp_stand <- SamsaRaLight::create_sl_stand(
@@ -112,6 +116,39 @@ create_sl_stands <- function(init_db,
 
 
 # Global functions ----
+move_sensors_out_of_trunks <- function(data_sensors, data_trees, margin_m, site) {
+  
+  # A sensor closer to a stem centre than DBH/2 (and below the tree top) cannot physically be there: it was beside the stem in the field, and its position is a mapping error
+  # In SamsaRaLight, a trunk is a cylinder of radius DBH/2 from the tree base to the crown base, which takes all the energy of the rays it intercepts: such a sensor may receive no energy, whatever the LAD
+  # Such sensors are moved radially (same azimuth from the stem centre) to the stem surface + margin_m
+  trunk_radius <- data_trees$dbh_cm / 200
+  
+  for (i in seq_len(nrow(data_sensors))) {
+    
+    dx <- data_sensors$x[i] - data_trees$x
+    dy <- data_sensors$y[i] - data_trees$y
+    d <- sqrt(dx^2 + dy^2)
+    inside <- which(d < trunk_radius & data_sensors$h_m[i] < data_trees$h_m)
+    
+    if (length(inside) == 0) next
+    j <- inside[which.min(d[inside])]
+    if (d[j] == 0) stop("Sensor ", data_sensors$id_sensor[i], " of ", site, " is exactly at the centre of tree ", data_trees$id_tree[j], ": no direction to move it")
+    
+    new_d <- trunk_radius[j] + margin_m
+    data_sensors$x[i] <- data_trees$x[j] + dx[j] / d[j] * new_d
+    data_sensors$y[i] <- data_trees$y[j] + dy[j] / d[j] * new_d
+    
+    message("Sensor ", data_sensors$id_sensor[i], " of ", site, " was inside the stem of tree ", data_trees$id_tree[j],
+            " (", round(d[j], 3), " m from the stem centre, trunk radius ", round(trunk_radius[j], 3), " m): moved to ", round(new_d, 3), " m")
+    
+    # The new position must not be inside another trunk
+    d_new <- sqrt((data_sensors$x[i] - data_trees$x)^2 + (data_sensors$y[i] - data_trees$y)^2)
+    if (any(d_new < trunk_radius & data_sensors$h_m[i] < data_trees$h_m)) stop("Sensor ", data_sensors$id_sensor[i], " of ", site, " is still inside a stem after being moved")
+  }
+  
+  data_sensors
+}
+
 correct_IRRES2018_crowns <- function(data_trees, params_alloms, site) {
   
   data_trees_2018 <- data_trees %>% 

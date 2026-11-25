@@ -34,7 +34,7 @@ list(
   
   tar_target(SL_VERSION, {
     v <- packageVersion("SamsaRaLight")
-    if (v < "1.1.0.9000") stop("SamsaRaLight >= 1.1.0.9000 is required (installed: ", v, ")")
+    if (v < "1.1.0.9001") stop("SamsaRaLight >= 1.1.0.9001 is required (installed: ", v, ")")
     as.character(v)
   }, cue = tar_cue(mode = "always")),
   
@@ -52,6 +52,7 @@ list(
   
   tar_target(LOCAL_BA_RADIUS, 15),
   tar_target(CELL_SIZE, 5),
+  tar_target(SENSOR_TRUNK_MARGIN, 0.10), # Distance (m) from the stem surface where sensors mapped inside a trunk are moved
   
   
   # PREPARE DATABASE ----
@@ -97,6 +98,7 @@ list(
                      params_alloms,
                      cell_size = CELL_SIZE,
                      local_ba_radius = LOCAL_BA_RADIUS,
+                     sensor_trunk_margin = SENSOR_TRUNK_MARGIN,
                      seed = SEED)
   }),
   

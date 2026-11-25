@@ -93,9 +93,13 @@ initialise_model <- function(mod_design,
     # Estimate light on the sensors from the precomputed geometry (same model as run_sl(), see estimate_pacl_from_geometry()) ----
     if (use_sl_geometry) {
       
+      # Trees data.frame built once in the setup (same tree order as crown_lad): only the LAD is replaced
+      trees_lad <- d$trees_lad
+      trees_lad$crown_lad <- crown_lad
+      
       return(SamsaRaLight::estimate_pacl_from_geometry(
         sl_geometries[[site]],
-        trees = data.frame(id_tree = d$id_tree, crown_lad = crown_lad)
+        trees = trees_lad
       )$sensors)
     }
     
@@ -840,14 +844,14 @@ initialise_model <- function(mod_design,
       geometry_site <- sl_geometries[[site_name]]
       
       # Same trees in the geometry and in the stand
-      if (!setequal(geometry_site$id_tree, data_stands[[site_name]]$trees$id_tree)) {
+      if (!setequal(geometry_site$trees$id_tree, data_stands[[site_name]]$trees$id_tree)) {
         stop("The trees of the geometry differ from the trees of the stand in site ", site_name)
       }
       
       # All retained sensors are estimated by the geometry (test estimation with the prior LAD)
       sensors_geometry <- SamsaRaLight::estimate_pacl_from_geometry(
         geometry_site,
-        trees = data.frame(id_tree = geometry_site$id_tree, crown_lad = prior_lad)
+        trees = data.frame(id_tree = geometry_site$trees$id_tree, crown_lad = prior_lad)
       )$sensors$id_sensor
       
       sensors_missing <- setdiff(data_stands[[site_name]]$sensors$id_sensor, sensors_geometry)
@@ -1000,6 +1004,7 @@ initialise_model <- function(mod_design,
     
     data_sites_calib[[site_name]] <- list(
       id_tree = tmp_trees$id_tree,
+      trees_lad = data.frame(id_tree = tmp_trees$id_tree, crown_lad = NA_real_),
       id_sp = match(tmp_trees$species, species2calib),
       shadetolstd = tmp_trees$shadetolstd,
       dbhstd = tmp_trees$dbhstd,

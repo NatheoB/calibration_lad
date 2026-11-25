@@ -28,6 +28,12 @@ filter_sensors <- function(data_stands,
                        by = "id_sensor") %>% 
       
       dplyr::mutate(keep = pacl_field >= min_pacl & punobs <= max_punobs)
+    
+    # A sensor receiving no modelled energy (punobs = 0/0) cannot be fitted whatever the LAD: stop rather than drop it silently
+    if (any(!is.finite(out_punobs_sites[[site]]$punobs))) {
+      stop("Sensors receiving no modelled energy in ", site, ": ",
+           paste(out_punobs_sites[[site]]$id_sensor[!is.finite(out_punobs_sites[[site]]$punobs)], collapse = ", "))
+    }
   }
   
   out_punobs_sites %>% 
