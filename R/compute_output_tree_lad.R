@@ -6,7 +6,7 @@ compute_output_tree_lad <- function(data_stands,
   
   # Keep only interest  model
   params <- output_params[[as.character(id_mod)]]
-  setup <- models_setup[[id_mod]]
+  setup <- models_setup[[as.character(id_mod)]]
   
   # Get species-specific and leaf group parameters
   spspe_params <- params %>%
@@ -104,7 +104,7 @@ scale_compet <- function(x, setup) {
   if (!setup$mod_design$compet_effect) return(0)
   
   mean_compet <- setup$compet_mean
-  sd_compet <- setup$compet_mean
+  sd_compet <- setup$compet_sd
   
   (x - mean_compet) / sd_compet
 }

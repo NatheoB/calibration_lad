@@ -4,7 +4,9 @@ initialise_models <- function(exp_design,
                               data_rad,
                               sensors_punobs,
                               prior_lad,
-                              n_threads) {
+                              n_threads,
+                              use_sl_geometry = TRUE,
+                              sl_geometries = NULL) {
   
   
   ## Create the Bayesian setup for each model ----
@@ -14,13 +16,15 @@ initialise_models <- function(exp_design,
     
     id_model <- ids_model[i]
     
-    model_setups[[id_model]] <- initialise_model(exp_design[i,],
+    model_setups[[as.character(id_model)]] <- initialise_model(exp_design[i,],
                                                  data_plots,
                                                  data_stands,
                                                  data_rad,
                                                  sensors_punobs,
                                                  prior_lad,
-                                                 n_threads)
+                                                 n_threads,
+                                                 use_sl_geometry,
+                                                 sl_geometries)
   }
   
   
@@ -36,7 +40,9 @@ initialise_model <- function(mod_design,
                              data_rad,
                              sensors_punobs,
                              prior_lad,
-                             n_threads) {
+                             n_threads,
+                             use_sl_geometry = TRUE,
+                             sl_geometries = NULL) {
   
   # BayesianTools consider global variables during the MCMC sampling
   # Thus, we need to create an environment with all the functions and variables needed for MCMC sampling
@@ -59,23 +65,10 @@ initialise_model <- function(mod_design,
                                lad_shadetolXdbhXcompet_per_sp
                                ) {
     
-    # Species-specific parameters ----
-    # Here the order of the species modalities is really important
-    # It is the same as in the species2calib, in lad_intercept_per_species...
-    # And also the same in is_species_gymno when we added gymnosperm coefficients to species-specific parameters
-    sp_coefs <- data.frame(
-      species = species2calib,
-      random_sp = lad_random_per_sp,
-      intercept = lad_intercept_per_sp,
-      beta_shadetol = lad_shadetol_per_sp,
-      beta_dbh = lad_dbh_per_sp,
-      beta_compet = lad_compet_per_sp,
-      beta_shadetolXdbh = lad_shadetolXdbh_per_sp,
-      beta_shadetolXcompet = lad_shadetolXcompet_per_sp,
-      beta_dbhXcompet = lad_dbhXcompet_per_sp,
-      beta_shadetolXdbhXcompet = lad_shadetolXdbhXcompet_per_sp
-    )
-
+    # Precomputed site data (species index and standardised covariates of the trees) ----
+    # The species-specific parameters are in the order of species2calib, as id_sp
+    d <- data_sites_calib[[site]]
+    sp <- d$id_sp
     
     # Random site effect ----
     # Here, the order is really important, and is the same between site_names and lad_sites vectors
@@ -83,28 +76,33 @@ initialise_model <- function(mod_design,
     
     # Compute the tree LAD ----
     # Here, only add the site random effect, as the origin effect in already included in the estimation of the site effect (hierarchical structure)
-    # Same, we did also consider the gymnosperm effect, adding them to each species-specific coefficient
+    eta <- random_site + 
+      lad_random_per_sp[sp] + 
+      lad_intercept_per_sp[sp] + 
+      lad_shadetol_per_sp[sp] * d$shadetolstd + 
+      lad_dbh_per_sp[sp] * d$dbhstd + 
+      lad_compet_per_sp[sp] * d$competstd + 
+      lad_shadetolXdbh_per_sp[sp] * d$shadetolstd * d$dbhstd + 
+      lad_shadetolXcompet_per_sp[sp] * d$shadetolstd * d$competstd + 
+      lad_dbhXcompet_per_sp[sp] * d$dbhstd * d$competstd + 
+      lad_shadetolXdbhXcompet_per_sp[sp] * d$shadetolstd * d$dbhstd * d$competstd
+    
+    crown_lad <- exp(eta)
+    
+    
+    # Estimate light on the sensors from the precomputed geometry (same model as run_sl(), see estimate_pacl_from_geometry()) ----
+    if (use_sl_geometry) {
+      
+      return(SamsaRaLight::estimate_pacl_from_geometry(
+        sl_geometries[[site]],
+        trees = data.frame(id_tree = d$id_tree, crown_lad = crown_lad)
+      )$sensors)
+    }
+    
+    # Otherwise, run SamsaraLight (reference used to check the geometry) ----
     tmp_stand <- data_stands[[site]]
+    tmp_stand$trees$crown_lad <- crown_lad
     
-    tmp_stand$trees <- tmp_stand$trees %>% 
-      dplyr::left_join(sp_coefs, by = "species") %>% 
-      dplyr::mutate( 
-        eta = random_site + 
-          random_sp + 
-          intercept + 
-          beta_shadetol * shadetolstd + 
-          beta_dbh * dbhstd + 
-          beta_compet * competstd + 
-          beta_shadetolXdbh * shadetolstd * dbhstd + 
-          beta_shadetolXcompet * shadetolstd * competstd + 
-          beta_dbhXcompet * dbhstd * competstd + 
-          beta_shadetolXdbhXcompet * shadetolstd * dbhstd * competstd,
-        
-        crown_lad = exp(eta)
-      )
-    
-    
-    # Run SamsaraLight ----
     tmp_out_samsalight <- SamsaRaLight::run_sl(
       tmp_stand, 
       data_rad[[site]],
@@ -120,10 +118,45 @@ initialise_model <- function(mod_design,
     
   }
   
+  ## FUNCTION TO COMPUTE PACL RESIDUALS IN ONE SITE ----
+  # Returns the simulated PACL of the sensors of the site, in the order of data_sites_calib[[site]]$id_sensor
+  # Uses the global data_stands, data_rad, sl_geometries and data_sites_calib (setup environment, or global environment of the workers when run on cl_sites)
+  compute_pacl_residuals_site <- function(site,
+                                          lad_random_per_sites,
+                                          lad_random_per_sp,
+                                          lad_intercept_per_sp,
+                                          lad_shadetol_per_sp,
+                                          lad_dbh_per_sp,
+                                          lad_compet_per_sp,
+                                          lad_shadetolXdbh_per_sp,
+                                          lad_shadetolXcompet_per_sp,
+                                          lad_dbhXcompet_per_sp,
+                                          lad_shadetolXdbhXcompet_per_sp) {
+    
+    ## Sl sensors output for a given LAD model in a given plot ----
+    tmp_out_sl <- run_sl_standXlad(
+      data_stands,
+      data_rad,
+      site, 
+      lad_random_per_sites,
+      lad_random_per_sp,
+      lad_intercept_per_sp,
+      lad_shadetol_per_sp,
+      lad_dbh_per_sp,
+      lad_compet_per_sp,
+      lad_shadetolXdbh_per_sp,
+      lad_shadetolXcompet_per_sp,
+      lad_dbhXcompet_per_sp,
+      lad_shadetolXdbhXcompet_per_sp
+    )
+    
+    # Simulated PACL of the field sensors ----
+    tmp_out_sl$pacl[match(data_sites_calib[[site]]$id_sensor, tmp_out_sl$id_sensor)]
+  }
+  
+  
   ## FUNCTION TO RUN SAMSARALIGHT ON ALL STANDS ----
-  compute_pacl_residuals <- function(data_stands,
-                                     data_rad,
-                                     lad_random_per_sites,
+  compute_pacl_residuals <- function(lad_random_per_sites,
                                      lad_random_per_sp,
                                      lad_intercept_per_sp,
                                      lad_shadetol_per_sp,
@@ -135,65 +168,62 @@ initialise_model <- function(mod_design,
                                      lad_shadetolXdbhXcompet_per_sp,
                                      print.pb) {
 
-    
-    # Output list
-    out_residuals_list <- vector("list", length(site_names))
-    
-    # Initialize progress bar
-    i <- 1
-    
-    if (print.pb) {
-      pb <- txtProgressBar(min = 0, max = length(site_names),
-                           style = 3, width = 50, char = "=")
-    }
-    
-    # Run for each site ----
-    for (site in site_names) {
+    # Run the sites in parallel if a cluster has been started (see start_cluster_sites()) ----
+    # clusterApplyLB() returns the outputs in the order of site_names (sites ordered by decreasing cost in the setup)
+    if (!is.null(cl_sites)) {
       
-      ## Sl sensors output for a given LAD model in a given plot ----
-      tmp_out_sl <- run_sl_standXlad(
-        data_stands,
-        data_rad,
-        site, 
-        lad_random_per_sites,
-        lad_random_per_sp,
-        lad_intercept_per_sp,
-        lad_shadetol_per_sp,
-        lad_dbh_per_sp,
-        lad_compet_per_sp,
-        lad_shadetolXdbh_per_sp,
-        lad_shadetolXcompet_per_sp,
-        lad_dbhXcompet_per_sp,
-        lad_shadetolXdbhXcompet_per_sp
+      run_site <- function(site, ...) compute_pacl_residuals_site(site, ...)
+      environment(run_site) <- globalenv() # Avoid sending the setup environment to the workers at each call
+      
+      out_pacl_list <- parallel::clusterApplyLB(
+        cl_sites, site_names, run_site,
+        lad_random_per_sites, lad_random_per_sp, lad_intercept_per_sp,
+        lad_shadetol_per_sp, lad_dbh_per_sp, lad_compet_per_sp,
+        lad_shadetolXdbh_per_sp, lad_shadetolXcompet_per_sp,
+        lad_dbhXcompet_per_sp, lad_shadetolXdbhXcompet_per_sp
       )
       
-      # Compute PACL residuals the sensors ----
-      out_residuals_list[[i]] <- dplyr::left_join(
-        
-        # Estimated pacl from virtual sensors
-        tmp_out_sl %>%
-          dplyr::select(id_sensor, pacl_sl = pacl),
-        
-        # Measured pacl from field sensor
-        data_stands[[site]]$sensors %>%
-          dplyr::select(id_sensor, pacl_field = pacl),
-        
-        by = "id_sensor"
-      ) %>% 
-        
-        dplyr::mutate(residuals = pacl_sl - pacl_field,
-                      site = site) %>% 
-        dplyr::select(site, id_sensor, pacl_sl, pacl_field, residuals)
+    } else {
       
+      # Output list
+      out_pacl_list <- vector("list", length(site_names))
       
-      # Update the progress bar
-      if (print.pb) setTxtProgressBar(pb, i)
-      i <- i+1
+      # Initialize progress bar
+      i <- 1
+      
+      if (print.pb) {
+        pb <- txtProgressBar(min = 0, max = length(site_names),
+                             style = 3, width = 50, char = "=")
+      }
+      
+      # Run for each site ----
+      for (site in site_names) {
+        
+        out_pacl_list[[i]] <- compute_pacl_residuals_site(
+          site,
+          lad_random_per_sites, lad_random_per_sp, lad_intercept_per_sp,
+          lad_shadetol_per_sp, lad_dbh_per_sp, lad_compet_per_sp,
+          lad_shadetolXdbh_per_sp, lad_shadetolXcompet_per_sp,
+          lad_dbhXcompet_per_sp, lad_shadetolXdbhXcompet_per_sp
+        )
+        
+        # Update the progress bar
+        if (print.pb) setTxtProgressBar(pb, i)
+        i <- i+1
+      }
+      if (print.pb) close(pb)
     }
-    if (print.pb) close(pb)
     
-    # Return residuals for all sensors ----
-    dplyr::bind_rows(out_residuals_list)
+    # Return residuals for all sensors (same columns as before: site, id_sensor, pacl_sl, pacl_field, residuals) ----
+    pacl_sl <- unlist(out_pacl_list)
+    
+    data.frame(
+      site = sensors_calib$site,
+      id_sensor = sensors_calib$id_sensor,
+      pacl_sl = pacl_sl,
+      pacl_field = sensors_calib$pacl_field,
+      residuals = pacl_sl - sensors_calib$pacl_field
+    )
   }
   
   
@@ -526,9 +556,7 @@ initialise_model <- function(mod_design,
     # (difference between estimated/observed PACL for each sensor)
     
     ## 5.1. get residuals by running SamsaraLight ----
-    out_sl <- compute_pacl_residuals(data_stands, 
-                                     data_rad, 
-                                     p_random_per_site,
+    out_sl <- compute_pacl_residuals(p_random_per_site,
                                      p_random_per_sp,
                                      p_intercept_per_sp,
                                      p_shadetol_per_sp,
@@ -574,7 +602,8 @@ initialise_model <- function(mod_design,
     if (pointwise) {
       return(list(
         "residuals" = residuals,
-        "loglikelihood" = log_likelihood_data
+        "loglikelihood" = log_likelihood_data,
+        "sensors" = out_sl[, c("site", "id_sensor", "pacl_field")]
       ))
     }
     
@@ -778,7 +807,7 @@ initialise_model <- function(mod_design,
     # Remove sites without sensors
     sites_nosensors <- unlist(data_stands %>% purrr::map(~nrow(.x$sensors) == 0))
     
-    data_plots <- data_plots %>% dplyr::filter(!sites_nosensors)
+    data_plots <- data_plots %>% dplyr::filter(!name %in% names(sites_nosensors)[sites_nosensors])
     data_stands <- data_stands[!sites_nosensors]
     
     message(
@@ -790,6 +819,49 @@ initialise_model <- function(mod_design,
     
   }
   
+  
+  
+  ## Check the precomputed geometries ----
+  # Each retained site must have a geometry built on the same trees, containing all its retained sensors
+  if (use_sl_geometry) {
+    
+    if (is.null(sl_geometries)) stop("use_sl_geometry is TRUE but no sl_geometries were given")
+    
+    sites_nogeometry <- setdiff(names(data_stands), names(sl_geometries))
+    if (length(sites_nogeometry) > 0) {
+      stop("No geometry for the sites: ", paste(sites_nogeometry, collapse = ", "))
+    }
+    
+    # Keep the geometries of the retained sites
+    sl_geometries <- sl_geometries[names(data_stands)]
+    
+    for (site_name in names(data_stands)) {
+      
+      geometry_site <- sl_geometries[[site_name]]
+      
+      # Same trees in the geometry and in the stand
+      if (!setequal(geometry_site$id_tree, data_stands[[site_name]]$trees$id_tree)) {
+        stop("The trees of the geometry differ from the trees of the stand in site ", site_name)
+      }
+      
+      # All retained sensors are estimated by the geometry (test estimation with the prior LAD)
+      sensors_geometry <- SamsaRaLight::estimate_pacl_from_geometry(
+        geometry_site,
+        trees = data.frame(id_tree = geometry_site$id_tree, crown_lad = prior_lad)
+      )$sensors$id_sensor
+      
+      sensors_missing <- setdiff(data_stands[[site_name]]$sensors$id_sensor, sensors_geometry)
+      if (length(sensors_missing) > 0) {
+        stop("Sensors missing from the geometry in site ", site_name, ": ", paste(sensors_missing, collapse = ", "))
+      }
+    }
+  }
+  
+  
+  ## Order sites by decreasing computation cost (number of trees x number of sensors) ----
+  # Largest sites first, for load balancing when the sites are run in parallel
+  site_cost <- data_stands %>% purrr::map_dbl(~nrow(.x$trees) * nrow(.x$sensors))
+  data_plots <- data_plots %>% dplyr::arrange(dplyr::desc(site_cost[name]))
   
   
   ## Standardized variables ----
@@ -814,7 +886,7 @@ initialise_model <- function(mod_design,
   
   ### DBH ----
   dbh_vect <- data_stands %>% 
-    purrr::map(~.x$trees$dbh_cm) %>% 
+    purrr::map(~.x$trees$dbh_cm[!.x$trees$added_to_fill]) %>% 
     purrr::reduce(c)
   
   dbh_mean <- mean(dbh_vect)
@@ -834,7 +906,7 @@ initialise_model <- function(mod_design,
   if (mod_design$compet_effect & !is.na(mod_design$compet_var)) {
   
     compet_vect <- data_stands %>% 
-      purrr::map(~.x$trees[,mod_design$compet_var]) %>% 
+      purrr::map(~.x$trees[!.x$trees$added_to_fill, mod_design$compet_var]) %>% 
       purrr::reduce(c)
     
     compet_mean <- mean(compet_vect)
@@ -861,6 +933,9 @@ initialise_model <- function(mod_design,
   
   
   ## Global variables ----
+  
+  ### Cluster to run the sites in parallel (NULL = sequential, see start_cluster_sites()) ----
+  cl_sites <- NULL
   
   ### Site/Origin effect ----
   origin_names <- unique(data_plots$origin)
@@ -903,14 +978,45 @@ initialise_model <- function(mod_design,
       
       # Order species with the same order as the species vector
       dplyr::mutate(species = factor(species, levels = species2calib)) %>%
-      dplyr::arrange() %>%
+      dplyr::arrange(species) %>%
       dplyr::pull(group)
+
+    if (length(group_per_species) != n_species) stop("Each species must belong to exactly one group")
 
     groups2calib <- unique(group_per_species)
     id_group_per_species <- match(group_per_species, groups2calib)
     n_groups <- length(groups2calib)
   }
 
+  
+  ### Site data used at each evaluation of the likelihood ----
+  # Precomputed once to avoid data.frame operations (joins, selections) at each evaluation
+  # Trees: species index in species2calib and standardised covariates, in the order of data_stands[[site]]$trees
+  data_sites_calib <- setNames(vector("list", n_sites), site_names)
+  
+  for (site_name in site_names) {
+    
+    tmp_trees <- data_stands[[site_name]]$trees
+    
+    data_sites_calib[[site_name]] <- list(
+      id_tree = tmp_trees$id_tree,
+      id_sp = match(tmp_trees$species, species2calib),
+      shadetolstd = tmp_trees$shadetolstd,
+      dbhstd = tmp_trees$dbhstd,
+      competstd = tmp_trees$competstd,
+      id_sensor = data_stands[[site_name]]$sensors$id_sensor
+    )
+  }
+  
+  # Sensors: observed PACL of all the sensors, in the order of the residuals (sites in site_names order)
+  sensors_calib <- purrr::map(
+    site_names,
+    ~data.frame(site = .x,
+                id_sensor = data_stands[[.x]]$sensors$id_sensor,
+                pacl_field = data_stands[[.x]]$sensors$pacl)
+  ) %>% 
+    dplyr::bind_rows()
+  
   
   ## Define parameters and priors ----
   # HALFCAUCHY PRIORS MUST BE THE FIRST ONES (typically for modelling SD)
@@ -936,15 +1042,15 @@ initialise_model <- function(mod_design,
   
   #### Model residuals ----
   par_normal <- c(par_normal, "sigma_mod_log")
-  prior_normal_mean <- c(prior_normal_mean, log(0.3))
-  prior_normal_sd <- c(prior_normal_sd, 0.3)
+  prior_normal_mean <- c(prior_normal_mean, log(0.1))
+  prior_normal_sd <- c(prior_normal_sd, 1)
   
   
   #### Origin random effect ----
   if (mod_design$origin_rd_effect) {
     par_normal <- c(par_normal, "sigma_origin_log")
     prior_normal_mean <- c(prior_normal_mean, log(0.3))
-    prior_normal_sd <- c(prior_normal_sd, 0.3)
+    prior_normal_sd <- c(prior_normal_sd, 1)
   }
   
   
@@ -952,7 +1058,7 @@ initialise_model <- function(mod_design,
   if (mod_design$site_rd_effect) {
     par_normal <- c(par_normal, "sigma_site_log")
     prior_normal_mean <- c(prior_normal_mean, log(0.3))
-    prior_normal_sd <- c(prior_normal_sd, 0.3)
+    prior_normal_sd <- c(prior_normal_sd, 1)
   }
   
   
@@ -960,7 +1066,7 @@ initialise_model <- function(mod_design,
   if (mod_design$species_rd_effect) {
     par_normal <- c(par_normal, "sigma_sp_log")
     prior_normal_mean <- c(prior_normal_mean, log(0.3))
-    prior_normal_sd <- c(prior_normal_sd, 0.3)
+    prior_normal_sd <- c(prior_normal_sd, 1)
   }
   
   

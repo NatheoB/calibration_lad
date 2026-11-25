@@ -1,13 +1,25 @@
 get_summary_pointwise_models <- function(models_setup,
                                          model_output,
                                          n_burning_per_rep,
+                                         n_samples_per_rep,
+                                         n_site_workers,
                                          logs_folder) {
   
-  get_summary_pointwise_model <- function(output, n_burning_per_rep) {
+  get_summary_pointwise_model <- function(output, n_burning_per_rep, n_samples_per_rep, n_site_workers) {
+    
+    # Start the cluster to run the sites in parallel ----
+    if (n_site_workers > 1) {
+      cl_sites <<- start_cluster_sites(parent.env(environment()), n_site_workers)
+      on.exit({
+        parallel::stopCluster(cl_sites)
+        cl_sites <<- NULL
+      }, add = TRUE)
+    }
     
     # Get samples of the chains of the model (bind the chains samplings with coda argument)
     samples <- BayesianTools::getSample(output, coda = F)
-    samples <- samples[(nrow(samples)-n_burning_per_rep):nrow(samples),]
+    samples <- samples[-(1:n_burning_per_rep),]
+    samples <- samples[round(seq(1, nrow(samples), length.out = n_samples_per_rep)),]
     
     # Get the number of observation (i.e. total number of sesnors over all the sites)
     n_sensors <- nrow(data_stands %>% 
@@ -35,7 +47,9 @@ get_summary_pointwise_models <- function(models_setup,
     
     list(
       "residuals" = out_residuals,
-      "llpointwise" = out_llpointwise
+      "llpointwise" = out_llpointwise,
+      "sensors" = matrices_list$sensors,
+      "sigma" = exp(samples[, "sigma_mod_log"])
     )
   }
   
@@ -92,10 +106,10 @@ get_summary_pointwise_models <- function(models_setup,
         log_write("Starting computing\n\n")
       
         ## Set the model environment
-        environment(get_summary_pointwise_model) <- models_setup[[id_model]]
+        environment(get_summary_pointwise_model) <- models_setup[[as.character(id_model)]]
         
         ## Get the model residuals and pointwise log-likelihood matrices
-        out <- get_summary_pointwise_model(model_output$outputs, n_burning_per_rep)
+        out <- get_summary_pointwise_model(model_output$outputs, n_burning_per_rep, n_samples_per_rep, n_site_workers)
         
         ## Add model IDs to output
         out$id_model <- id_model

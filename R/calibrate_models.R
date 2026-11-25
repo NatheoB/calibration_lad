@@ -1,10 +1,20 @@
 calibrate_models <- function(models_setup,
                              id_model,
                              i_rep,
+                             n_site_workers,
                              logs_folder) {
   
   # Function to calibrate a model given the environment is set up ----
-  calibrate_model <- function() {
+  calibrate_model <- function(n_site_workers) {
+    
+    # Start the cluster to run the sites in parallel ----
+    if (n_site_workers > 1) {
+      cl_sites <<- start_cluster_sites(parent.env(environment()), n_site_workers)
+      on.exit({
+        parallel::stopCluster(cl_sites)
+        cl_sites <<- NULL
+      }, add = TRUE)
+    }
     
     
     # Define settings ----
@@ -94,10 +104,10 @@ calibrate_models <- function(models_setup,
         log_write("Starting MCMC\n")
         
         ## Set the model environment
-        environment(calibrate_model) <- models_setup[[id_model]]
+        environment(calibrate_model) <- models_setup[[as.character(id_model)]]
         
         ### capture printed output
-        out <- calibrate_model()
+        out <- calibrate_model(n_site_workers)
         
         ## Add model IDs to output
         out$id_model <- id_model

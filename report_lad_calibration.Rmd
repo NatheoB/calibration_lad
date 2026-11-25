@@ -94,7 +94,7 @@ scale_dbh <- function(x) {
 scale_compet_batot <- function(x) {
   
   mean_compet <- output_models_list$setup$`4`$compet_mean
-  sd_compet <- output_models_list$setup$`4`$compet_mean
+  sd_compet <- output_models_list$setup$`4`$compet_sd
   
   (x - mean_compet) / sd_compet
 }
@@ -102,7 +102,7 @@ scale_compet_batot <- function(x) {
 scale_compet_bal <- function(x) {
   
   mean_compet <- output_models_list$setup$`5`$compet_mean
-  sd_compet <- output_models_list$setup$`5`$compet_mean
+  sd_compet <- output_models_list$setup$`5`$compet_sd
   
   (x - mean_compet) / sd_compet
 }
@@ -110,7 +110,7 @@ scale_compet_bal <- function(x) {
 scale_compet_rci <- function(x) {
   
   mean_compet <- output_models_list$setup$`6`$compet_mean
-  sd_compet <- output_models_list$setup$`6`$compet_mean
+  sd_compet <- output_models_list$setup$`6`$compet_sd
   
   (x - mean_compet) / sd_compet
 }

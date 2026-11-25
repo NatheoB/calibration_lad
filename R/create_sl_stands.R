@@ -573,7 +573,7 @@ compute_light_variables <- function(sl_stand, data_rad_site) {
   
   tmp_out <- SamsaRaLight::run_sl(
     sl_stand, data_rad_site, 
-    parallel_mod = TRUE,
+    parallel_mode = TRUE,
     verbose = FALSE
   )
   
