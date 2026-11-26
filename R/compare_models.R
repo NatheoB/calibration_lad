@@ -11,14 +11,20 @@ compare_models <- function(models_summary_pointwise) {
       ll <- do.call(rbind, purrr::map(x, ~.x$llpointwise))
       sensors <- x[[1]]$sensors
       
+      # Chain of each draw (run x internal DREAMzs chain), to account for the autocorrelation of the draws in PSIS
+      chain_id <- as.integer(factor(unlist(purrr::map(x, ~paste(.x$i_rep, .x$id_chain, sep = "_")))))
+      # (each column is shifted by its maximum before exp() to avoid underflow; the ESS of a column is unchanged by a constant factor)
+      r_eff <- loo::relative_eff(exp(sweep(ll, 2, apply(ll, 2, max))), chain_id = chain_id)
+      ll_site_r_eff <- t(rowsum(t(ll), group = sensors$site))
+      r_eff_site <- loo::relative_eff(exp(sweep(ll_site_r_eff, 2, apply(ll_site_r_eff, 2, max))), chain_id = chain_id)
+      
       # PSIS-LOO (main criterion) and WAIC (secondary)
-      # r_eff not given: draws thinned from long chains, assumed close to independent
-      loo_result <- tryCatch(loo::loo(ll), error = function(e) {message(e); NULL})
+      loo_result <- tryCatch(loo::loo(ll, r_eff = r_eff), error = function(e) {message(e); NULL})
       waic_result <- tryCatch(loo::waic(ll), error = function(e) {message(e); NULL})
       
       # Grouped PSIS-LOO by site (diagnostic of site-level dependence, many high Pareto k expected)
       ll_site <- t(rowsum(t(ll), group = sensors$site))
-      loo_site <- tryCatch(loo::loo(ll_site), error = function(e) {message(e); NULL})
+      loo_site <- tryCatch(loo::loo(ll_site, r_eff = r_eff_site), error = function(e) {message(e); NULL})
       
       # Sensors with an unreliable PSIS-LOO estimate (Pareto k > 0.7)
       sensors_highk <- NULL
@@ -32,6 +38,7 @@ compare_models <- function(models_summary_pointwise) {
         "id_model" = x[[1]]$id_model,
         "n_reps" = length(x),
         "n_draws" = nrow(ll),
+        "r_eff" = r_eff,
         "loo" = loo_result,
         "waic" = waic_result,
         "loo_site" = loo_site,

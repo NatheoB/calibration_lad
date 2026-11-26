@@ -48,7 +48,10 @@ calibrate_models <- function(models_setup,
     # Return the output ----
     return(
       list(
-        "outputs" = out,
+        "chains" = out$chain, # coda::mcmc.list, one element per internal DREAMzs chain (parameters + Lposterior, Llikelihood, Lprior); the bayesianSetup is not kept (its likelihood carries the whole setup environment, ~190 MB)
+        "par_names" = bayesianSetup$names,
+        "site_names" = site_names, # Order of the site random effects in the parameter vector
+        "settings" = settings,
         "computation_time" = computation_time
       )
     )

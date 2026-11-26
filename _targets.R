@@ -24,7 +24,7 @@ tar_option_set(packages = c("dplyr", "tidyr", "data.table",
                             "ggplot2", "ggforce", "sf", "sp",
                             "SamsaRaLight", "readxl", "nlme",
                             "BayesianTools", "extraDistr", "loo",
-                            "rlang", "e1071", "mgcv"))
+                            "rlang", "e1071", "mgcv", "posterior"))
 
 # List of targets
 list(
@@ -75,7 +75,6 @@ list(
 
   ## Finalise the database ----
   tar_target(init_db, finalise_database(init_db_raw, data_plots)),
-  
   
   
   # RECONSTRUCT 3D stands ----
@@ -180,7 +179,7 @@ list(
                                                   models_setup,
                                                   models_output_list,
                                                   "output/calib/",
-                                                  "outmods_20261116_test.Rdata")),
+                                                  "outmods_20261126_test.Rdata")),
 
   
   # COMPARE MODELS ----
@@ -200,6 +199,9 @@ list(
   ### Compare models with LOO-CV and WAIC ----
   tar_target(models_comparison, compare_models(models_summary_pointwise_list)),
 
+  ### Convergence diagnostics (Rhat, ESS) on the full post-burn-in chains ----
+  tar_target(models_convergence, diagnose_convergence(models_output_list, N_BURNING_PER_REP)),
+
 
   ### Evaluate models with RMSE ----
   tar_target(models_evaluation, evaluate_models(models_summary_pointwise_list)),
@@ -209,6 +211,7 @@ list(
   tar_target(output_comparison_fp, save_output_comparison(models_summary_pointwise_list,
                                                           models_comparison,
                                                           models_evaluation,
+                                                          models_convergence,
                                                           "output/comparison/",
                                                           "outcomp_20261116_test.Rdata")),
 

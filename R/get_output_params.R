@@ -10,24 +10,21 @@ get_output_params <- function(models_output_list,
     # Get the given sample for a replicate and a model
     purrr::map(~purrr::map_dfr(.x, function(outs) {
       
-      outs$outputs %>%
-        
-        # Get all output parameters
-        BayesianTools::getSample(coda = FALSE) %>% 
+      # Samples of the internal chains of the run, after burn-in
+      chain_samples <- get_chain_samples(outs, n_burning, n_samples_per_chain)
+      
+      chain_samples$samples %>%
         as.data.frame() %>% 
-        
-        # Random sample considering burning
-        dplyr::filter(row_number() > n_burning) %>% 
-        dplyr::sample_n(n_samples_per_chain) %>% 
         
         # Rename parameters
         dplyr::rename_all(~paste0("p_", .)) %>% 
         
         # Set unique id to paremeters
         dplyr::mutate(rep = outs$i_rep, 
+                      id_chain = chain_samples$id_chain,
                       id_params = row_number(),
                       id_set = paste(rep, id_params, sep = "_")) %>% 
-        dplyr::relocate(id_set, rep, id_params)
+        dplyr::relocate(id_set, rep, id_chain, id_params)
     }))
   
 }

@@ -16,10 +16,14 @@ get_summary_pointwise_models <- function(models_setup,
       }, add = TRUE)
     }
     
-    # Get samples of the chains of the model (bind the chains samplings with coda argument)
-    samples <- BayesianTools::getSample(output, coda = F)
-    samples <- samples[-(1:n_burning_per_rep),]
-    samples <- samples[round(seq(1, nrow(samples), length.out = n_samples_per_rep)),]
+    # The run must have been calibrated with this setup (same parameters, same order of site effects)
+    if (!identical(output$par_names, bayesianSetup$names) | !identical(output$site_names, site_names)) {
+      stop("The run output does not match the model setup (parameter names or site order differ): recalibrate or rebuild the setup")
+    }
+    
+    # Get samples of the internal chains of the run, after burn-in, with their chain identity
+    chain_samples <- get_chain_samples(output, n_burning_per_rep, n_samples_per_rep)
+    samples <- chain_samples$samples
     
     # Get the number of observation (i.e. total number of sesnors over all the sites)
     n_sensors <- nrow(data_stands %>% 
@@ -49,7 +53,8 @@ get_summary_pointwise_models <- function(models_setup,
       "residuals" = out_residuals,
       "llpointwise" = out_llpointwise,
       "sensors" = matrices_list$sensors,
-      "sigma" = exp(samples[, "sigma_mod_log"])
+      "sigma" = exp(samples[, "sigma_mod_log"]),
+      "id_chain" = chain_samples$id_chain
     )
   }
   
@@ -109,7 +114,7 @@ get_summary_pointwise_models <- function(models_setup,
         environment(get_summary_pointwise_model) <- models_setup[[as.character(id_model)]]
         
         ## Get the model residuals and pointwise log-likelihood matrices
-        out <- get_summary_pointwise_model(model_output$outputs, n_burning_per_rep, n_samples_per_rep, n_site_workers)
+        out <- get_summary_pointwise_model(model_output, n_burning_per_rep, n_samples_per_rep, n_site_workers)
         
         ## Add model IDs to output
         out$id_model <- id_model

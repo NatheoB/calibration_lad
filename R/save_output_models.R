@@ -6,7 +6,7 @@ save_output_models <- function(exp_design,
   
   output_models_list <- list(
     "exp_design" = exp_design,
-    "setup" = models_setup,
+    "setup" = summarise_models_setup(models_setup),
     "output" = models_output
   )
   
